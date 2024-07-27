@@ -27,6 +27,7 @@ The script employs several strategies to accurately calculate track counts and p
        module: music_tracker
        class: MusicTracker
        db_path: "/config/music_history.db"
+       duration: 5
        media_players:
          - media_player.living_room
          - media_player.bedroom
@@ -35,6 +36,7 @@ The script employs several strategies to accurately calculate track counts and p
 
 ## Configuration
 * **media_players:** A list of media player entities to track.
+* **duration:** Time in seconds to start to count track
 * **db_path:** The path to the SQLite database file.
 
 ## Usage
