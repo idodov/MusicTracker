@@ -10,9 +10,15 @@ This Python script is designed to track music played on Home Assistant media pla
 * Calculates and displays top songs, artists, albums, and media channels for different timeframes.
 * Automatically removes old tracks from the database to maintain performance.
 
+## How Track Counts Are Calculated
+The script employs several strategies to accurately calculate track counts and prevent overcounting:
+* **Unique Track Identification:** Tracks are identified by a combination of artist and title. This ensures that different versions or remixes of the same song are counted same.
+* **Track Playing Time:** Tracks are started to count if they played at least 5 seconds (user can change this value)
+* **Track Deduplication:** A `TrackManager` class maintains a dictionary of recently played tracks. If a track is played again within a specified timeframe (currently 10 minutes), it's considered a duplicate and not counted.
+
 ## Installation
 1. **Install AppDaemon from HomeAssistant Addon Store**
-2. Copy the Script file
+2. Copy the script file and place it into the appddeamon apps directory 
 3. **Create a new App in AppDaemon:**
    * Navigate to AppDaemon -> Apps
    * Add a new app with the following configuration:
@@ -20,7 +26,7 @@ This Python script is designed to track music played on Home Assistant media pla
      music_tracker:
        module: music_tracker
        class: MusicTracker
-       db_path: "/config/music_history.db"  # Replace with your desired path
+       db_path: "/config/music_history.db"
        media_players:
          - media_player.living_room
          - media_player.bedroom
