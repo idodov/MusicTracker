@@ -27,22 +27,35 @@ class TrackManager:
             time.sleep(self.cleanup_interval)
             current_time = time.time()
             with self.lock:
-                to_remove = [track_id for track_id, timestamp in self.played_tracks.items()
-                            if current_time - timestamp > 600]
+                to_remove = [track_id for track_id, timestamp in self.played_tracks.items() if current_time - timestamp > 600]
                 for track_id in to_remove:
                     del self.played_tracks[track_id]
 
 class MusicTracker(hass.Hass):
     def initialize(self):
-        self.media_players = self.args["media_players"]
-        self.duration = self.args["duration"]
-        self.db_path = self.args["db_path"]
+        self.media_players = self.args.get("media_players", ["media_player.era300"])
+        self.duration = self.args.get("duration", 30)
+        self.chart_update_time = self.args.get("update_time", "00:00:00")
+        self.db_path = self.args.get("db_path", "/config/MusicTracker.db")
         self.track_manager = TrackManager()  # Initialize TrackManager
         self.create_db()
         self.cleanup_old_tracks()
+
+        if not self.entity_exists("input_boolean.music_charts"):
+            self.set_state("input_boolean.music_charts", state="off")
         
         for media_player in self.media_players:
             self.listen_state(self.track_media, media_player, attribute="media_title")
+
+        self.run_daily(self.update_daily_charts, self.chart_update_time)
+        self.listen_state(self.check_boolean_state, "input_boolean.music_charts", attribute="state")
+
+    def check_boolean_state(self, entity, attribute, old, new, kwargs):
+        if new == "on":
+            self.update_sensors()
+
+    def update_daily_charts(self, kwargs):
+        self.set_state("input_boolean.music_charts", state="on")
 
     def create_db(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -89,29 +102,37 @@ class MusicTracker(hass.Hass):
                     return
                 
                 self.track_manager.add_track(track_id)
-                #print(self.track_manager.played_tracks)
                 
                 if not album and media_channel:
                     album = f'{media_channel} / {artist}'
 
                 self.log(f"Storing track: {artist} | {clean_title} | {album}")
                 self.store_in_db(artist, clean_title, album, media_channel)
-                self.update_sensors()
+
+    def remove_unmatched(self, match):
+        """Checks if a match has a closing bracket and returns an empty string if not."""
+        start, end = match.span()
+        if not re.search(r"[\]\)]", match.string[start:]):
+            return ""
+        return match.group()
 
     def clean_track_title(self, title: str) -> str:
         keywords = [
-            'remaster', 'remastered', 'mix', 'remix', 'dub', 'demo', 'instrumental'
-            'extended', 'version', 'radio', 'live', 'edit', 'anniversary', 'edition', 'single'
+            'remaster', 'remastered', 're-master', 're-mastered', 'mix', 'remix', 'dub', 
+            'dubs', 'demo', 'deluxe', 'instrumental', 'extended', 'version', 'radio edit', 'live', 
+            'edit', 'anniversary', 'edition', 'single'
         ]
     
         # Create a regex pattern to match the keywords
         pattern = re.compile(
-            r'[\(\[\-]?[^()\[\]-]*\b(?:' + '|'.join(keywords) + r')\b[^()\[\]-]*[\)\]\-]?',
+            r'\s*[\(\[\-](?:[^\(\)\[\]\-]*\b(?:' + '|'.join(keywords) + r')\b[^\(\)\[\]\-]*)[\)\]\-]?\s*',
             re.IGNORECASE
         )
-    
-        # Use regex to substitute the matched patterns with an empty string
+
         cleaned_title = pattern.sub('', title).strip()
+        cleaned_title = re.sub(r"[\(\[].*", self.remove_unmatched, cleaned_title)
+
+        cleaned_title = re.sub(r"\s+$", "", cleaned_title)
     
         return cleaned_title
 
@@ -124,25 +145,28 @@ class MusicTracker(hass.Hass):
             """, (artist, title, album, media_channel))
             conn.commit()
 
-    def update_sensors(self):
-        timeframes = {
-            "daily": "1 day",
-            "weekly": "7 days",
-            "monthly": "30 days",
-            "yearly": "365 days"
-        }
+    def update_sensors(self, *kwargs):
+        if self.get_state("input_boolean.music_charts") == "on":
+            timeframes = {
+                "daily": "1 day",
+                "weekly": "7 days",
+                "monthly": "30 days",
+                "yearly": "365 days"
+            }
 
-        for period, days in timeframes.items():
-            limit = 100 if period in ["monthly", "yearly"] else 20
-            top_songs = self.get_top_songs(days, limit)
-            top_artists = self.get_top_artists(days, limit)
-            top_albums = self.get_top_albums(days, limit)
-            top_media_channels = self.get_top_media_channels(days, limit)
+            for period, days in timeframes.items():
+                limit = 100 if period in ["monthly", "yearly"] else 20
+                top_songs = self.get_top_songs(days, limit)
+                top_artists = self.get_top_artists(days, limit)
+                top_albums = self.get_top_albums(days, limit)
+                top_media_channels = self.get_top_media_channels(days, limit)
 
-            self.set_state(f"sensor.top_{period}_songs", state="Top Songs", attributes={"songs": top_songs})
-            self.set_state(f"sensor.top_{period}_artists", state="Top Artists", attributes={"artists": top_artists})
-            self.set_state(f"sensor.top_{period}_albums", state="Top Albums", attributes={"albums": top_albums})
-            self.set_state(f"sensor.top_{period}_media_channels", state="Top Media Channels", attributes={"media_channels": top_media_channels})
+                self.set_state(f"sensor.top_{period}_songs", state="Top Songs", attributes={"songs": top_songs})
+                self.set_state(f"sensor.top_{period}_artists", state="Top Artists", attributes={"artists": top_artists})
+                self.set_state(f"sensor.top_{period}_albums", state="Top Albums", attributes={"albums": top_albums})
+                self.set_state(f"sensor.top_{period}_media_channels", state="Top Media Channels", attributes={"media_channels": top_media_channels})
+            self.log("Charts updated.")
+            self.set_state("input_boolean.music_charts", state="off")
 
     def get_top_songs(self, days, limit):
         query = f"""
@@ -256,11 +280,10 @@ class MusicTracker(hass.Hass):
                 "play_count": item[1]
             })
 
-        return 
-        
+        return top_media_channels
+
     def cleanup_old_tracks(self):
         """Removes tracks older than one year from the database."""
-
         one_year_ago = datetime.datetime.now() - datetime.timedelta(days=365)
         one_year_ago_str = one_year_ago.strftime('%Y-%m-%d')
 
@@ -272,8 +295,6 @@ class MusicTracker(hass.Hass):
             """, (one_year_ago_str,))
             conn.commit()
 
-
-
 # In your apps.yaml file, you would configure this app like so:
 #
 # music_tracker:
@@ -281,7 +302,12 @@ class MusicTracker(hass.Hass):
 #   class: MusicTracker
 #   db_path: "/config/music_history.db"
 #   media_players:
+#     - media_player.era300
 #     - media_player.living_room_speaker
 #     - media_player.bedroom_speaker
+#   update_time: "02:00:00"  # Example time for daily update
 #
-
+# To use Google AI
+# python_scripts: in configuration
+# add: https://github.com/pmazz/ps_hassio_entities/blob/master/python_scripts/hass_entities.py
+# script: script.ai
