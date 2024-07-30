@@ -1,11 +1,31 @@
-# File path: apps/music_tracker.py
+"""
+This script tracks your music listening habits across your media players.
+Builds a database of your listening history.
+Generates daily charts for your top songs, artists, albums, and more.
+Provides insights into your musical tastes.
 
+#apps.yaml example:
+music_tracker:
+  module: music_tracker
+  class: MusicTracker
+  db_path: "/config/music_data_history.db"
+  duration: 5
+  min_songs_for_album: 4
+  update_time: "00:00:00"
+  media_players:
+    - media_player.kitchen
+    - media_player.bathroom
+    - media_player.bedroom
+    - media_player.living_room
+    - media_player.dining_room
+"""
 import appdaemon.plugins.hass.hassapi as hass
 import datetime
 import sqlite3
 import re
 import time
 import threading
+import json
 
 class TrackManager:
     def __init__(self):
@@ -35,11 +55,13 @@ class MusicTracker(hass.Hass):
     def initialize(self):
         self.media_players = self.args.get("media_players", ["media_player.era300"])
         self.duration = self.args.get("duration", 30)
+        self.min_songs_for_album = self.args.get("min_songs_for_album", 3)  # New argument
         self.chart_update_time = self.args.get("update_time", "00:00:00")
         self.db_path = self.args.get("db_path", "/config/MusicTracker.db")
         self.track_manager = TrackManager()  # Initialize TrackManager
         self.create_db()
         self.cleanup_old_tracks()
+        self.update_sensors()
 
         if not self.entity_exists("input_boolean.music_charts"):
             self.set_state("input_boolean.music_charts", state="off")
@@ -67,6 +89,15 @@ class MusicTracker(hass.Hass):
                     title TEXT,
                     album TEXT,
                     media_channel TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chart_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    type TEXT,
+                    period TEXT,
+                    data TEXT,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -156,19 +187,45 @@ class MusicTracker(hass.Hass):
 
             for period, days in timeframes.items():
                 limit = 100 if period in ["monthly", "yearly"] else 20
+                chart_title_songs = f"Top {period.capitalize()} Songs"
+                chart_title_artists = f"Top {period.capitalize()} Artists"
+                chart_title_albums = f"Top {period.capitalize()} Albums"
+                chart_title_media_channels = f"Top {period.capitalize()} Media Channels"
+                chart_title_popular_artists = f"Popular {period.capitalize()} Artists"
+                chart_dates = self.get_chart_dates(days)
                 top_songs = self.get_top_songs(days, limit)
                 top_artists = self.get_top_artists(days, limit)
                 top_albums = self.get_top_albums(days, limit)
                 top_media_channels = self.get_top_media_channels(days, limit)
+                popular_artists = self.get_popular_artists(days, limit)
 
-                self.set_state(f"sensor.top_{period}_songs", state="Top Songs", attributes={"songs": top_songs})
-                self.set_state(f"sensor.top_{period}_artists", state="Top Artists", attributes={"artists": top_artists})
-                self.set_state(f"sensor.top_{period}_albums", state="Top Albums", attributes={"albums": top_albums})
-                self.set_state(f"sensor.top_{period}_media_channels", state="Top Media Channels", attributes={"media_channels": top_media_channels})
+                self.set_state(f"sensor.top_{period}_songs", state="Top Songs", attributes={"songs": top_songs, "chart_title": chart_title_songs, "chart_dates": chart_dates})
+                self.set_state(f"sensor.top_{period}_artists", state="Top Artists", attributes={"artists": top_artists, "chart_title": chart_title_artists, "chart_dates": chart_dates})
+                self.set_state(f"sensor.top_{period}_albums", state="Top Albums", attributes={"albums": top_albums, "chart_title": chart_title_albums, "chart_dates": chart_dates})
+                self.set_state(f"sensor.top_{period}_media_channels", state="Top Media Channels", attributes={"media_channels": top_media_channels, "chart_title": chart_title_media_channels, "chart_dates": chart_dates})
+                self.set_state(f"sensor.popular_artist_chart", state="Popular Artists", attributes={"artists": popular_artists, "chart_title": chart_title_popular_artists, "chart_dates": chart_dates})
+
+                self.store_chart_history("songs", period, top_songs)
+                self.store_chart_history("artists", period, top_artists)
+                self.store_chart_history("albums", period, top_albums)
+                self.store_chart_history("media_channels", period, top_media_channels)
+
             self.log("Charts updated.")
             self.set_state("input_boolean.music_charts", state="off")
 
+
+    def get_chart_dates(self, days):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT MIN(timestamp), MAX(timestamp) FROM music_history WHERE timestamp >= datetime('now', '-{days}')")
+            result = cursor.fetchone()
+            start_date = datetime.datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S').strftime('%d/%m/%Y') if result[0] else 'N/A'
+            end_date = datetime.datetime.strptime(result[1], '%Y-%m-%d %H:%M:%S').strftime('%d/%m/%Y') if result[1] else 'N/A'
+            return f"{start_date} - {end_date}"
+
     def get_top_songs(self, days, limit):
+        previous_chart = self.get_previous_chart("songs", "daily")
+
         query = f"""
             SELECT title, artist, album, COUNT(*) as count
             FROM music_history
@@ -184,61 +241,28 @@ class MusicTracker(hass.Hass):
             results = cursor.fetchall()
 
         top_songs = []
-        for item in results:
+        for idx, item in enumerate(results):
+            change = self.calculate_change(previous_chart, item, idx + 1, 'songs')
             top_songs.append({
                 "title": item[0],
                 "artist": item[1],
                 "album": item[2],
-                "play_count": item[3]
+                "play_count": item[3],
+                "change": change['change'],
+                "new_entry": change['new_entry'],
+                "re_entry": change['re_entry']
             })
 
         return top_songs
 
     def get_top_artists(self, days, limit):
+        previous_chart = self.get_previous_chart("artists", "daily")
+
         query = f"""
-            SELECT artist, title, album, COUNT(*) as count
+            SELECT artist, COUNT(*) as count
             FROM music_history
             WHERE timestamp >= datetime('now', '-{days}')
-            GROUP BY artist, title, album
-            ORDER BY count DESC
-        """
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            results = cursor.fetchall()
-
-        artist_songs = {}
-        for item in results:
-            artist = item[0]
-            song = {
-                "title": item[1],
-                "album": item[2],
-                "play_count": item[3]
-            }
-            if artist not in artist_songs:
-                artist_songs[artist] = {"songs": [], "total_play_count": 0}
-            artist_songs[artist]["songs"].append(song)
-            artist_songs[artist]["total_play_count"] += item[3]
-
-        top_artists = []
-        for artist, data in sorted(artist_songs.items(), key=lambda x: x[1]["total_play_count"], reverse=True):
-            top_artists.append({
-                "artist": artist,
-                "songs": data["songs"],
-                "total_play_count": data["total_play_count"]
-            })
-            if len(top_artists) >= limit:
-                break
-
-        return top_artists
-
-    def get_top_albums(self, days, limit):
-        query = f"""
-            SELECT artist, album, COUNT(*) as count
-            FROM music_history
-            WHERE timestamp >= datetime('now', '-{days}')
-            GROUP BY artist, album
+            GROUP BY artist
             ORDER BY count DESC
             LIMIT {limit}
         """
@@ -248,15 +272,73 @@ class MusicTracker(hass.Hass):
             cursor.execute(query)
             results = cursor.fetchall()
 
-        top_albums = []
-        for item in results:
-            top_albums.append({
+        top_artists = []
+        for idx, item in enumerate(results):
+            change = self.calculate_change(previous_chart, item, idx + 1, 'artists')
+            top_artists.append({
                 "artist": item[0],
+                "play_count": item[1],
+                "change": change['change'],
+                "new_entry": change['new_entry'],
+                "re_entry": change['re_entry']
+            })
+
+        return top_artists
+
+    def get_top_albums(self, days, limit):
+        previous_chart = self.get_previous_chart("albums", "daily")
+
+        album_counts_query = f"""
+            SELECT artist, album, COUNT(DISTINCT title) as song_count
+            FROM music_history
+            WHERE timestamp >= datetime('now', '-{days}')
+            GROUP BY artist, album
+            HAVING song_count >= {self.min_songs_for_album}
+            ORDER BY song_count DESC
+            LIMIT {limit}
+        """
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(album_counts_query)
+            results = cursor.fetchall()
+
+        top_albums = []
+        for idx, item in enumerate(results):
+            change = self.calculate_change(previous_chart, item, idx + 1, 'albums')
+            top_albums.append({
                 "album": item[1],
-                "play_count": item[2]
+                "artist": item[0],
+                "play_count": item[2],
+                "change": change['change'],
+                "new_entry": change['new_entry'],
+                "re_entry": change['re_entry'],
+                "songs": self.get_album_songs(item[0], item[1], days)
             })
 
         return top_albums
+
+    def get_album_songs(self, artist, album, days):
+        query = f"""
+            SELECT title, COUNT(*) as play_count
+            FROM music_history
+            WHERE artist = ? AND album = ? AND timestamp >= datetime('now', '-{days}')
+            GROUP BY title
+            ORDER BY play_count DESC
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (artist, album))
+            results = cursor.fetchall()
+
+        songs = []
+        for item in results:
+            songs.append({
+                "title": item[0],
+                "play_count": item[1]
+            })
+
+        return songs
 
     def get_top_media_channels(self, days, limit):
         query = f"""
@@ -273,14 +355,86 @@ class MusicTracker(hass.Hass):
             cursor.execute(query)
             results = cursor.fetchall()
 
+        previous_chart = self.get_previous_chart('media_channels', days)
         top_media_channels = []
-        for item in results:
-            top_media_channels.append({
-                "media_channel": item[0],
-                "play_count": item[1]
-            })
+        for idx, item in enumerate(results):
+            if item[0] is not None:  # Remove entries where media_channel is null
+                change = self.calculate_change(previous_chart, item, idx + 1, 'media_channels')
+                top_media_channels.append({
+                    "media_channel": item[0],
+                    "play_count": item[1],
+                    "change": change['change'],
+                    "new_entry": change['new_entry'],
+                    "re_entry": change['re_entry']
+                })
 
         return top_media_channels
+
+    def get_popular_artists(self, days, limit):
+        query = f"""
+            SELECT artist, COUNT(DISTINCT title) as unique_songs
+            FROM music_history
+            WHERE timestamp >= datetime('now', '-{days}')
+            GROUP BY artist
+            ORDER BY unique_songs DESC
+            LIMIT {limit}
+        """
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query)
+            results = cursor.fetchall()
+
+        popular_artists = []
+        for item in results:
+            popular_artists.append({
+                "artist": item[0],
+                "unique_songs": item[1]
+            })
+
+        return popular_artists
+
+    def calculate_change(self, previous_chart, current_item, current_rank, chart_type):
+        if chart_type == 'songs':
+            title, artist, album = current_item[:3]
+            previous_rank = next((i + 1 for i, item in enumerate(previous_chart) if item['title'] == title and item['artist'] == artist and item['album'] == album), None)
+        elif chart_type == 'artists':
+            artist = current_item[0]
+            previous_rank = next((i + 1 for i, item in enumerate(previous_chart) if item['artist'] == artist), None)
+        elif chart_type == 'albums':
+            album, artist = current_item[:2]
+            previous_rank = next((i + 1 for i, item in enumerate(previous_chart) if item['album'] == album and item['artist'] == artist), None)
+        elif chart_type == 'media_channels':
+            media_channel = current_item[0]
+            previous_rank = next((i + 1 for i, item in enumerate(previous_chart) if item['media_channel'] == media_channel), None)
+
+        if previous_rank is None:
+            return {'change': 0, 'new_entry': True, 're_entry': False}
+        else:
+            return {'change': previous_rank - current_rank, 'new_entry': False, 're_entry': current_rank > previous_rank}
+
+    def store_chart_history(self, chart_type, period, data):
+        data_json = json.dumps(data)
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO chart_history (type, period, data)
+                VALUES (?, ?, ?)
+            """, (chart_type, period, data_json))
+            conn.commit()
+
+    def get_previous_chart(self, chart_type, period):
+        query = f"""
+            SELECT data FROM chart_history
+            WHERE type = ? AND period = ?
+            ORDER BY timestamp DESC
+            LIMIT 1, 1
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (chart_type, period))
+            result = cursor.fetchone()
+            return json.loads(result[0]) if result else []
 
     def cleanup_old_tracks(self):
         """Removes tracks older than one year from the database."""
@@ -294,20 +448,3 @@ class MusicTracker(hass.Hass):
                 WHERE timestamp < ?
             """, (one_year_ago_str,))
             conn.commit()
-
-# In your apps.yaml file, you would configure this app like so:
-#
-# music_tracker:
-#   module: music_tracker
-#   class: MusicTracker
-#   db_path: "/config/music_history.db"
-#   media_players:
-#     - media_player.era300
-#     - media_player.living_room_speaker
-#     - media_player.bedroom_speaker
-#   update_time: "02:00:00"  # Example time for daily update
-#
-# To use Google AI
-# python_scripts: in configuration
-# add: https://github.com/pmazz/ps_hassio_entities/blob/master/python_scripts/hass_entities.py
-# script: script.ai
