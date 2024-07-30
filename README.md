@@ -1,4 +1,4 @@
-# Music Tracker
+# Appdaemon Music Tracker
 ## 🎶 MusicTracker for Home Assistant 🎶
 Welcome to MusicTracker, your ultimate tool for tracking and charting your favorite tunes in Home Assistant. This AppDaemon script lets you keep track of what’s playing, create various charts, and dive deep into your music data. Let's get your music data grooving!
 
