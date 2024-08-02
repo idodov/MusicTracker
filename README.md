@@ -193,5 +193,92 @@ _{{ chart_dates }}_
 {% else %}No data available.{% endif %}
 ```
 
+Certainly! Here's a rephrased version for your GitHub page in Markdown format:
+
+---
+
+## Guide to Creating an AI Data Analyst for Top Music Charts
+
+This guide will help you set up an AI data analyst to track top music charts using Google AI Conversation Agent integrated with Home Assistant. Feel free to use any other AI agents you prefer.
+
+### Steps:
+
+1. **Google AI Integration**:
+    - Install the Google AI integration using your Google API key as described on the integration page.
+
+2. **Prepare Home Assistant**:
+    - If you don't already have a `python_scripts` directory, create one in the `homeassistant/config` directory.
+
+3. **Download the Python Script**:
+    - Grab the Python file from [this repository](https://github.com/pmazz/ps_hassio_entities/tree/master/python_scripts) and place it inside the `python_scripts` directory.
+
+4. **Update Configuration**:
+    - Open `configuration.yaml` and add the following line if it doesn't already exist:
+
+    ```yaml
+    python_script:
+    ```
+
+5. **Restart Home Assistant** to apply the changes.
+
+6. **Create a Custom Script**:
+    - Now, create a script that will send your music listening habits to the AI agent and store the data inside a sensor attribute for easy access.
+    - Goto Settings > Automation > Scripts and Create a new script.
+    - Goto the YAML mode and paste this code:
+      ```yaml
+      alias: ai
+      sequence:
+        - service: google_generative_ai_conversation.generate_content
+          data:
+            prompt: >
+              {% set songs = state_attr('sensor.top_weekly_songs', 'songs') %} {% set
+              chart_title = state_attr('sensor.top_weekly_songs', 'chart_title') %} {%
+              set chart_dates = state_attr('sensor.top_weekly_songs', 'chart_dates')
+              %} Let's dive into my music taste! Here's a breakdown of what I or anyone who shared in the house music listened
+              to during dates: {{ chart_dates }}.
+              played: | Artist | Title | Play Count |
+              |--------|-------|------------|{% for song in songs %} | {{ song.artist
+              }} | {{ song.title }} | {{ song.play_count }} |{% endfor %}
+
+              Analyze my listening habits to uncover my music preferences. What
+              genres, moods, or artists do I gravitate towards? What can my listening
+              data reveal about my musical tastes? Be possitive.
+
+              Based on my preferences, recommend new artists and songs that I might
+              enjoy. Surprise me with some fresh tracks and or trivias about the artist in the list.
+
+              Your reply in markdown.
+          response_variable: ai_response
+        - service: python_script.hass_entities
+             data:
+               action: set_state_attributes
+               entity_id: input_boolean.music_charts
+               attributes:
+                 - ai_text: "{{ ai_response['text'] }}"
+                 - ai_update: "{{ '' ~ now().strftime('%H:%M | %d/%m/%Y') }}"
+      ```
+   - Now you can create an automation to make the script runs whenever you want and/or create a button entity to press it on your dashboad to run it.
+     Here a simple dashboad card to active and see the AI results.
+
+      ```yaml
+     type: vertical-stack
+     cards:
+       - show_name: true
+         show_icon: false
+         type: button
+         tap_action:
+           action: call-service
+           service: script.ai
+           target: {}
+         entity: input_boolean.music_charts
+         name: AI
+         icon: mdi:account-music
+         show_state: false
+       - type: markdown
+         content: |-
+            Update: {{ state_attr('input_boolean.music_charts', 'ai_update') }}
+            {{ state_attr('input_boolean.music_charts', 'ai_text') }}
+       title: AI Analytics
+      ```
 ______
 The Data in saved local for a year.
