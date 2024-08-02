@@ -35,7 +35,7 @@ First things first, you'll need to install the AppDaemon add-on in Home Assistan
    - Place the script in `/addon_configs/a0d7b954_appdaemon/apps/music_tracker.py`.
 
 2. **Configure `apps.yaml`**:
-   - Open or create `apps.yaml` in your `apps` directory and add the following configuration:
+   - Open `apps.yaml` in your `appdamon/apps` directory and add the following configuration:
    ```yaml
    music_tracker:
      module: music_tracker
@@ -53,7 +53,7 @@ First things first, you'll need to install the AppDaemon add-on in Home Assistan
 
 To get everything up and running, go ahead and restart AppDaemon. Then, start playing a variety of music tracks.
 
-## 🎛️ Customize the Config
+## Customize the Config
 
 - **Media Players:** Replace `media_player.living_room` and `media_player.bedroom` with the names of your media players.
 - **Duration:** Adjust `duration` to set the delay before storing a track (in seconds).
@@ -62,10 +62,10 @@ To get everything up and running, go ahead and restart AppDaemon. Then, start pl
 
 The script creates an input boolean called `input_boolean.music_charts` in your Home Assistant configuration. This will control when the charts are updated.
 
-[!TIP]
-> Remember to be patient! The charts work best after a month-long cycle. On the first day, you’ll enjoy the popular artist and songs daily charts. Wait for a week, and you’ll start seeing your own personalized charts displayed on your dashboard.
+> [!TIP]
+> **Remember to be patient!** The charts work best after a month-long cycle. On the first day, you’ll enjoy the popular artist and songs daily charts. Wait for a week, and you’ll start seeing your own personalized charts displayed on your dashboard.
 
-## 📊 Home Assistant Card Examples
+## Home Assistant Card Examples
 
 ### Media Channel Data Card
 
@@ -111,7 +111,7 @@ content: >
   | {{ loop.index }} |{{ album.artist }}| {{ album.album }} | {{
   album.play_count }} | {% if album.change > 0 %}<font color="green">🔺{{
   album.change }}</font>{% elif album.change < 0 %}<font color="red">🔻{{
-  album.change | abs }}</font>{% else %} ➡️{% endif %} |{% endfor %}
+  album.change | abs }}</font>{% else %} -{% endif %} |{% endfor %}
 
 
   ### {{ states.sensor.top_monthly_albums.attributes.chart_title }} {{
@@ -125,7 +125,7 @@ content: >
   | {{ loop.index }} |{{ album.artist }}| {{ album.album }} | {{
   album.play_count }} |{% if album.change > 0 %}<font color="green">🔺{{
   album.change }}</font>{% elif album.change < 0 %}<font color="red">🔻{{
-  album.change | abs }}</font>{% else %} ➡️{% endif %} |{% endfor %}
+  album.change | abs }}</font>{% else %} -{% endif %} |{% endfor %}
 
 
   ### {{ states.sensor.top_yearly_albums.attributes.chart_title }} {{
@@ -139,7 +139,7 @@ content: >
   | {{ loop.index }} |{{ album.artist }}| {{ album.album }} | {{
   album.play_count }} |{% if album.change > 0 %}<font color="green">🔺{{
   album.change }}</font>{% elif album.change < 0 %}<font color="red">🔻{{
-  album.change | abs }}</font>{% else %} ➡️{% endif %} |{% endfor %}
+  album.change | abs }}</font>{% else %} -{% endif %} |{% endfor %}
 title: Albums Charts
 ```
 
@@ -159,7 +159,7 @@ content: >
   | {{ loop.index }} |{{ song.artist }}| {{ song.title }} | {{ song.play_count
   }} | {% if song.change > 0 %}<font color="green">🔺 {{ song.change }}</font>{%
   elif song.change < 0 %}<font color="red">🔻 {{ song.change | abs }}</font>{%
-  else %} ➡️{% endif %} |{% endfor %}
+  else %} -{% endif %} |{% endfor %}
 
 
   ### {{ states.sensor.top_weekly_songs.attributes.chart_title }} {{
@@ -173,7 +173,7 @@ content: >
   | {{ loop.index }} |{{ song.artist }}| {{ song.title }} | {{ song.play_count
   }} |{% if song.change > 0 %}<font color="green">🔺 {{ song.change }}</font>{%
   elif song.change < 0 %}<font color="red">🔻 {{ song.change | abs }}</font>{%
-  else %} ➡️{% endif %} |{% endfor %}
+  else %} -{% endif %} |{% endfor %}
 
 
   ### {{ states.sensor.top_monthly_songs.attributes.chart_title }} {{
@@ -187,7 +187,7 @@ content: >
   | {{ loop.index }} |{{ song.artist }}| {{ song.title }} |  {{ song.play_count
   }}| {% if song.change > 0 %}<font color="green">🔺 {{ song.change }}</font>{%
   elif song.change < 0 %}<font color="red">🔻 {{ song.change | abs }}</font>{%
-  else %} ➡️{% endif %} |{% endfor %}
+  else %} -{% endif %} |{% endfor %}
 
 
   ### {{ states.sensor.top_yearly_songs.attributes.chart_title }} {{
@@ -201,7 +201,7 @@ content: >
   | {{ loop.index }} |{{ song.artist }}| {{ song.title }} |  {{ song.play_count
   }}|{% if song.change > 0 %}<font color="green">🔺 {{ song.change }}</font>{%
   elif song.change < 0 %}<font color="red">🔻 {{ song.change | abs }}</font>{%
-  else %} ➡️{% endif %}
+  else %} -{% endif %}
 
  |{% endfor %}
 title: Song Charts
@@ -220,11 +220,10 @@ content: >
   _{{ chart_dates }}_
 
   {% if channels %}
-  | **Media Channel** | **Play Count** |
-  |------------------|---------------|
+  | # | **Media Channel** | **Play Count** |
+  |---|-------------------|----------------|
   {% for channel in channels %}
-  | {{ channel.media_channel }} | {{ channel.play_count }} |
-  {% endfor %}
+  | {{ loop.index }} | {{ channel.media_channel }} | {{ channel.play_count }} |{% endfor %}
   {% else %}
   No data available.
   {% endif %}
@@ -232,13 +231,13 @@ content: >
 
 # Guide to Creating an AI Data Analyst for Top Music Charts
 
-Welcome to your ultimate guide for setting up an AI data analyst to track top music charts using Google AI Conversation Agent integrated with Home Assistant. Feel free to use any other AI agents you prefer. Let’s get your music data grooving!
+Setup an AI data analyst to track top music charts using Google AI Conversation Agent integrated with Home Assistant. Feel free to use any other AI agents you prefer. Let’s get your music data grooving!
 
 ## Steps to Get Started
 
 ### 1. Google AI Integration
 
-- Install the Google AI integration using your Google API key as described on the integration page.
+- Install the [Google Generative AI Conversation](https://www.home-assistant.io/integrations/google_generative_ai_conversation/) using your Google API key as described on the integration page.
 
 ### 2. Prepare Home Assistant
 
