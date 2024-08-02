@@ -9,8 +9,8 @@ music_tracker:
   module: music_tracker
   class: MusicTracker
   db_path: "/config/music_data_history.db"
-  duration: 5
-  min_songs_for_album: 4
+  duration: 30
+  min_songs_for_album: 3
   update_time: "00:00:00"
   media_players:
     - media_player.kitchen
@@ -61,10 +61,13 @@ class MusicTracker(hass.Hass):
         self.track_manager = TrackManager()  # Initialize TrackManager
         self.create_db()
         self.cleanup_old_tracks()
-        self.update_sensors()
+        self.Restart_Charts = True
 
         if not self.entity_exists("input_boolean.music_charts"):
             self.set_state("input_boolean.music_charts", state="off")
+        
+        self.update_sensors()
+        self.Restart_Charts = False
         
         for media_player in self.media_players:
             self.listen_state(self.track_media, media_player, attribute="media_title")
@@ -137,8 +140,20 @@ class MusicTracker(hass.Hass):
                 if not album and media_channel:
                     album = f'{media_channel} / {artist}'
 
+                if not album:
+                    album = title
+
                 self.log(f"Storing track: {artist} | {clean_title} | {album}")
                 self.store_in_db(artist, clean_title, album, media_channel)
+
+                latest_song = {
+                    "artist": artist,
+                    "title": clean_title,
+                    "album": album,
+                }
+
+                self.set_state("input_boolean.music_charts", state="off", attributes=latest_song)
+
 
     def remove_unmatched(self, match):
         """Checks if a match has a closing bracket and returns an empty string if not."""
@@ -177,7 +192,7 @@ class MusicTracker(hass.Hass):
             conn.commit()
 
     def update_sensors(self, *kwargs):
-        if self.get_state("input_boolean.music_charts") == "on":
+        if self.get_state("input_boolean.music_charts") == "on" or self.Restart_Charts == True:
             timeframes = {
                 "daily": "1 day",
                 "weekly": "7 days",
@@ -186,7 +201,7 @@ class MusicTracker(hass.Hass):
             }
 
             for period, days in timeframes.items():
-                limit = 100 if period in ["monthly", "yearly"] else 20
+                limit = 100 #if period in ["monthly", "yearly"] else 20
                 chart_title_songs = f"Top {period.capitalize()} Songs"
                 chart_title_artists = f"Top {period.capitalize()} Artists"
                 chart_title_albums = f"Top {period.capitalize()} Albums"
@@ -199,11 +214,11 @@ class MusicTracker(hass.Hass):
                 top_media_channels = self.get_top_media_channels(days, limit)
                 popular_artists = self.get_popular_artists(days, limit)
 
-                self.set_state(f"sensor.top_{period}_songs", state="Top Songs", attributes={"songs": top_songs, "chart_title": chart_title_songs, "chart_dates": chart_dates})
-                self.set_state(f"sensor.top_{period}_artists", state="Top Artists", attributes={"artists": top_artists, "chart_title": chart_title_artists, "chart_dates": chart_dates})
-                self.set_state(f"sensor.top_{period}_albums", state="Top Albums", attributes={"albums": top_albums, "chart_title": chart_title_albums, "chart_dates": chart_dates})
-                self.set_state(f"sensor.top_{period}_media_channels", state="Top Media Channels", attributes={"media_channels": top_media_channels, "chart_title": chart_title_media_channels, "chart_dates": chart_dates})
-                self.set_state(f"sensor.popular_artist_chart", state="Popular Artists", attributes={"artists": popular_artists, "chart_title": chart_title_popular_artists, "chart_dates": chart_dates})
+                self.set_state(f"sensor.top_{period}_songs", state=f"Top Songs ({chart_dates})", attributes={"songs": top_songs, "chart_title": chart_title_songs, "chart_dates": chart_dates})
+                self.set_state(f"sensor.top_{period}_artists", state=f"Top Artists ({chart_dates})", attributes={"artists": top_artists, "chart_title": chart_title_artists, "chart_dates": chart_dates})
+                self.set_state(f"sensor.top_{period}_albums", state=f"Top Albums ({chart_dates})", attributes={"albums": top_albums, "chart_title": chart_title_albums, "chart_dates": chart_dates})
+                self.set_state(f"sensor.top_{period}_media_channels", state=f"Top Media Channels ({chart_dates})", attributes={"media_channels": top_media_channels, "chart_title": chart_title_media_channels, "chart_dates": chart_dates})
+                self.set_state(f"sensor.popular_artist_chart", state=f"Popular Artists ({chart_dates})", attributes={"artists": popular_artists, "chart_title": chart_title_popular_artists, "chart_dates": chart_dates})
 
                 self.store_chart_history("songs", period, top_songs)
                 self.store_chart_history("artists", period, top_artists)
@@ -212,6 +227,7 @@ class MusicTracker(hass.Hass):
 
             self.log("Charts updated.")
             self.set_state("input_boolean.music_charts", state="off")
+            self.Restart_Charts = False
 
 
     def get_chart_dates(self, days):
@@ -448,3 +464,4 @@ class MusicTracker(hass.Hass):
                 WHERE timestamp < ?
             """, (one_year_ago_str,))
             conn.commit()
+
