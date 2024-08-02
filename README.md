@@ -49,7 +49,7 @@ First things first, you'll need to install the AppDaemon add-on in Home Assistan
        - media_player.bedroom
    ```
    
-## Customize the Config
+#### Customize the Config
 
 - **Media Players:** Replace `media_player.living_room` and `media_player.bedroom` with the names of your media players.
 - **Duration:** Adjust `duration` to set the delay before storing a track (in seconds).
