@@ -67,32 +67,71 @@ To get everything up and running, go ahead and restart AppDaemon. Then, start pl
 
 ## Home Assistant Card Examples
 
-### Media Channel Data Card
+### Top Artists Data Card
 
-Add this markdown to your Home Assistant dashboard to display the media channel data:
+Add this markdown to your Home Assistant dashboard to display the Artists data:
 
 ```yaml
-type: custom:markdown-card
-title: Media Channel Data
-content: |
-  ## Media Channels Chart
-  ### {{ states('sensor.top_daily_media_channels') }}
-  {% set channels = state_attr('sensor.top_daily_media_channels', 'media_channels') %}
-  {% set chart_title = state_attr('sensor.top_daily_media_channels', 'chart_title') %}
-  {% set chart_dates = state_attr('sensor.top_daily_media_channels', 'chart_dates') %}
+type: markdown
+content: >
+  ### {{ states.sensor.popular_artist_chart.attributes.chart_title }}
 
-  **{{ chart_title }}**
-  _{{ chart_dates }}_
+  _{{ states.sensor.popular_artist_chart.attributes.chart_dates }}_
 
-  {% if channels %}
-    | **Media Channel** | **Play Count** | **Change** | **New Entry** | **Re Entry** |
-    |------------------|---------------|------------|---------------|--------------|
-    {% for channel in channels %}
-      | {{ channel.media_channel }} | {{ channel.play_count }} | {{ channel.change }} | {{ channel.new_entry }} | {{ channel.re_entry }} |
-    {% endfor %}
-  {% else %}
-    No data available.
-  {% endif %}
+  | # |Artist|Unique Songs|
+
+  |:---|:-----|:----:|{% for artist in
+  states.sensor.popular_artist_chart.attributes.artists[:5] %}
+
+  | {{ loop.index }} |{{ artist.artist }}| {{ artist.unique_songs }} |{% endfor
+  %}
+
+
+  ### {{ states.sensor.top_daily_artists.attributes.chart_title }}
+
+  _{{ states.sensor.top_daily_artists.attributes.chart_dates }}_
+
+  | # |Artist|Counts|Status|
+
+  |:---|:-----|:----:|:----:|{% for artist in
+  states.sensor.top_daily_artists.attributes.artists[:5] %}
+
+  | {{ loop.index }} |{{ artist.artist }}| {{ artist.play_count }} | {% if
+  artist.change > 0 %}<font color="green">🔺{{ artist.change }}</font>{% elif
+  artist.change < 0 %}<font color="red">🔻{{ artist.change | abs }}</font>{%
+  else %}-{% endif %} |{% endfor %}
+
+
+  ### {{ states.sensor.top_weekly_artists.attributes.chart_title }}
+
+  _{{ states.sensor.top_weekly_artists.attributes.chart_dates }}_
+
+  | # |Artist|Counts|Status|
+
+  |:---|:-----|:----:|:----:|{% for artist in
+  states.sensor.top_weekly_artists.attributes.artists[:5] %}
+
+  | {{ loop.index }} |{{ artist.artist }}| {{ artist.play_count }} | {% if
+  artist.change > 0 %}<font color="green">🔺{{ artist.change }}</font>{% elif
+  artist.change < 0 %}<font color="red">🔻{{ artist.change | abs }}</font>{%
+  else %}-{% endif %} |{% endfor %}
+
+
+  ### {{ states.sensor.top_monthly_artists.attributes.chart_title }}
+
+  _{{ states.sensor.top_monthly_artists.attributes.chart_dates }}_
+
+  | # |Artist|Counts|Status|
+
+  |:---|:-----|:----:|:----:|{% for artist in
+  states.sensor.top_monthly_artists.attributes.artists[:5] %}
+
+  | {{ loop.index }} |{{ artist.artist }}| {{ artist.play_count }} | {% if
+  artist.change > 0 %}<font color="green">🔺{{ artist.change }}</font>{% elif
+  artist.change < 0 %}<font color="red">🔻{{ artist.change | abs }}</font>{%
+  else %}-{% endif %} |{% endfor %}
+title: Artist Charts
+
 ```
 
 ### Top Albums Card
