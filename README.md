@@ -48,11 +48,7 @@ First things first, you'll need to install the AppDaemon add-on in Home Assistan
        - media_player.living_room
        - media_player.bedroom
    ```
-
-### 3. Restart AppDaemon
-
-To get everything up and running, go ahead and restart AppDaemon. Then, start playing a variety of music tracks.
-
+   
 ## Customize the Config
 
 - **Media Players:** Replace `media_player.living_room` and `media_player.bedroom` with the names of your media players.
@@ -60,7 +56,11 @@ To get everything up and running, go ahead and restart AppDaemon. Then, start pl
 - **Minimum Songs for Album:** Set `min_songs_for_album` to determine the minimum songs for an album to appear on the charts.
 - **Update Time:** Change `update_time` to specify when the charts should be updated daily.
 
-The script creates an input boolean called `input_boolean.music_charts` in your Home Assistant configuration. This will control when the charts are updated.
+  The script creates an input boolean called `input_boolean.music_charts` in your Home Assistant configuration. This will control when the charts are updated.
+
+### 3. Restart AppDaemon
+
+To get everything up and running, go ahead and restart AppDaemon. Then, start playing a variety of music tracks.
 
 > [!TIP]
 > **Remember to be patient!** The charts work best after a month-long cycle. On the first day, you’ll enjoy the popular artist and songs daily charts. Wait for a week, and you’ll start seeing your own personalized charts displayed on your dashboard.
