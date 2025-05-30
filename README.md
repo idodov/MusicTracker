@@ -30,7 +30,7 @@ aspect_ratio: 100%
     *   Manually trigger updates via a Home Assistant `input_boolean`.
 *   **Title Cleaning:** Intelligently cleans song and album titles by removing common tags (e.g., "Remastered", "Live", "Explicit") for better grouping.
 *   **Responsive Design:** The HTML chart page is designed to work on desktop and mobile.
-*   **Optional AI Analysis (Beta):**
+*   **Optional AI Analysis (Appdaemon 4.5+):**
     *   Integrates with a Home Assistant AI service (e.g., local LLM via `conversation.process` or cloud-based).
     *   Provides an analysis of your listening habits, genre preferences, and song/artist recommendations based on your daily and weekly top songs.
     *   AI prompt is customizable.
