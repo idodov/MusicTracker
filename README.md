@@ -2,7 +2,7 @@
 
 Track your music listening habits from Home Assistant media players and generate beautiful, dynamic HTML charts. Includes daily, weekly, monthly, and yearly top songs, artists, albums, and channels/playlists, with an optional AI-powered analysis of your music taste.
 
-![image](https://github.com/user-attachments/assets/872c3a91-22e5-4f59-a111-282b034405ca)
+![image](https://github.com/user-attachments/assets/f39d931d-1dd3-4fe9-b3f8-011f403cd1c3)
 
 ![image](https://github.com/user-attachments/assets/85768a3a-2a81-4ff4-b327-870d3e7ed87c)
 ```yaml
