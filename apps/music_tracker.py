@@ -68,7 +68,7 @@ TEMPLATE = '''
     .chart-section { background: #fff; border-radius: 8px; padding: 1em; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .chart-section h2 { color: #34495e; margin-bottom: 0.5em; }
     .chart-tables { display: flex; flex-wrap: wrap; gap: 1em; }
-    .table-container { flex: 1 1 calc(50% - 1em); min-width: 300px; }
+    .table-container { flex: 1 1 calc(33% - 1em); min-width: 300px; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 0.5em; }
     /* Changed text-align: left to text-align: start for bidi support */
     th, td { padding: 0.5em; text-align: start; word-break: break-word;font-size: 0.8rem; }
@@ -132,7 +132,7 @@ TEMPLATE = '''
 <div class="chart-tables">
     {{ render_table('🎵 Songs', data.songs, {'Artist':'artist','Title':'title','▶️':'plays'}) }}
     {{ render_table('👤 Artists', data.artists, {'Artist':'artist','▶️':'plays'}) }}
-    {{ render_table('💽 Albums', data.albums, {'Album':'album','Artist':'artist','Tracks':'tracks'}) }}
+    {{ render_table('💽 Albums', data.albums, {'Album':'album','Artist':'artist','▶️':'tracks'}) }}
     {{ render_table('📻 Channels/Playlists', data.media_channels, {'Channel':'channel','▶️':'plays'}) }}
 </div>
 </section>
@@ -221,7 +221,7 @@ class MusicTracker(hass.Hass):
             
         self.duration_to_consider_played = self.args.get("duration", 30) 
         self.min_songs_for_album_chart = self.args.get("min_songs_for_album", 3)
-        self.chart_update_time = self.args.get("update_time", "23:59:00")
+        self.chart_update_time = self.args.get("update_time", "00:00:00")
         self.db_path = self.args.get("db_path")
         self.html_output_path = self.args.get("html_output_path", "/homeassistant/www/music_charts.html")
         self.ai_service = self.args.get("ai_service", False)
