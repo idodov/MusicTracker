@@ -5,7 +5,11 @@ Track your music listening habits from Home Assistant media players and generate
 ![image](https://github.com/user-attachments/assets/872c3a91-22e5-4f59-a111-282b034405ca)
 
 ![image](https://github.com/user-attachments/assets/85768a3a-2a81-4ff4-b327-870d3e7ed87c)
-
+```yaml
+type: iframe
+url: /local/music_charts.html
+aspect_ratio: 100%
+```
 
 ## Features
 
