@@ -70,7 +70,6 @@ TEMPLATE = '''
     .chart-tables { display: flex; flex-wrap: wrap; gap: 1em; }
     .table-container { flex: 1 1 calc(33% - 1em); min-width: 300px; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 0.5em; }
-    /* Changed text-align: left to text-align: start for bidi support */
     th, td { padding: 0.5em; text-align: start; word-break: break-word;font-size: 0.8rem; }
     th { background: #3498db; color: #fff; position: sticky; top: 0; z-index: 1;}
     tbody tr:nth-child(even) { background: #ecf0f1; }
@@ -81,7 +80,7 @@ TEMPLATE = '''
       header { flex-direction: column; align-items: flex-start; }
       #controls { margin-top: 0.5em; margin-bottom: 0.5em; }
     }
-    #ai-analysis { margin-top: 1em; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 1em; }
+    /* #ai-analysis { margin-top: 1em; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 1em; } */
     #ai-analysis h2 { color: #856404; }
     .change-up { color: green; font-weight: bold; }
     .change-down { color: red; font-weight: bold; }
@@ -102,13 +101,13 @@ TEMPLATE = '''
 </header>
 
 <main>
-{% macro render_table(title, items, cols) %}
+{% macro render_table(title, items, cols, current_period) %}
 <div class="table-container">
 <h3 dir="auto"><bdi>{{ title }}</bdi></h3>
 {% if items %}
 <table>
 <thead>
-<tr><th>#</th>{% for col in cols.keys() %}<th>{{ col }}</th>{% endfor %}<th>~</th></tr>
+<tr><th>#</th>{% for col in cols.keys() %}<th>{{ col }}</th>{% endfor %}{% if current_period != 'yearly' %}<th>~</th>{% endif %}</tr>
 </thead>
 <tbody>
 {% for item in items %}<tr>
@@ -116,12 +115,14 @@ TEMPLATE = '''
 {% for key in cols.values() %}
 <td dir="auto"><bdi>{{ item[key] }}</bdi></td>
 {% endfor %}
+{% if current_period != 'yearly' %} {# <--- Conditional data cell #}
 <td dir="auto" nowrap>
     {% if item.new_entry %}<span class="change-new">🆕</span>
     {% elif item.change > 0 %}<span class="change-up">▲{{ item.change }}</span>
-    {% elif item.change < 0 %}<span class="change-down">▼{{ (-item.change)|abs }}</span>
+    {% elif item.change < 0 %}<span class="change-down">▼{{ (-item.change)|abs }}</span> {# <--- Corrected class="change-down" #}
     {% else %} — {% endif %}
 </td>
+{% endif %} {# <--- End conditional data cell #}
 </tr>{% endfor %}
 </tbody></table>{% else %}<p>No data for {{ title }}</p>{% endif %}</div>
 {% endmacro %}
@@ -130,10 +131,10 @@ TEMPLATE = '''
 <section id="chart-{{ period }}" class="chart-section">
 <h2 dir="auto"><bdi>Top {{ period|capitalize }} ({{ data.dates }})</bdi></h2> 
 <div class="chart-tables">
-    {{ render_table('🎵 Songs', data.songs, {'Artist':'artist','Title':'title','▶️':'plays'}) }}
-    {{ render_table('👤 Artists', data.artists, {'Artist':'artist','▶️':'plays'}) }}
-    {{ render_table('💽 Albums', data.albums, {'Album':'album','Artist':'artist','▶️':'tracks'}) }}
-    {{ render_table('📻 Channels/Playlists', data.media_channels, {'Channel':'channel','▶️':'plays'}) }}
+    {{ render_table('🎵 Songs', data.songs, {'Artist':'artist','Title':'title','▶️':'plays'}, period) }} {# <--- Passed period #}
+    {{ render_table('👤 Artists', data.artists, {'Artist':'artist','▶️':'plays'}, period) }} {# <--- Passed period #}
+    {{ render_table('💽 Albums', data.albums, {'Album':'album','Artist':'artist','▶️':'tracks'}, period) }} {# <--- Passed period #}
+    {{ render_table('📻 Channels/Playlists', data.media_channels, {'Channel':'channel','▶️':'plays'}, period) }} {# <--- Passed period #}
 </div>
 </section>
 {% endfor %}
@@ -176,6 +177,52 @@ TEMPLATE = '''
 </body>
 </html>
 '''
+
+AI_PROMPT = [
+    "You are a 'Musical Insights Web Weaver,' an AI expert in analyzing music listening data and presenting it in a self-contained, visually stunning, modern, and engaging HTML widget.",
+    "Your primary goal is to create a beautiful, responsive, and insightful report as an embeddable HTML component based on the provided listening data, ensuring an excellent experience on both mobile and desktop.",
+
+    "Core Task & Content Requirements:",
+    "1. Analyze Listening Habits: Deeply analyze the provided data to reveal my musical preferences, focusing on: top genres, top artists, predominant moods (if inferable), and any notable listening patterns or shifts.",
+    "2. Deliver Positive Insights: Frame your analysis with positive and encouraging language.",
+    "3. Artist & Song Recommendations: Suggest 3-5 new artists and specific songs I might enjoy based on my habits. For each recommendation, include a piece of fun, engaging trivia about the artist or song.",
+    "4. Interactive Game Element (Highly Desired): Design and implement a small, fun, interactive game. This could be a trivia quiz, a 'guess the lyric/artist' challenge, or a simple matching game related to my music preferences or the recommendations. Use HTML, CSS, and embedded JavaScript to make it interactive. The game should be self-contained within your HTML output. Do not ask the user to type answer.",
+    "5. You can suprise me with ai generated image by 'https://pollinations.ai/p/'prompt'?model=turbo' of my top artists. by prompt (include artist names) 'Imagine these iconic artists reborn in a stunning, cartoon/paint/realistic masterpiece. Their expressions radiate emotion, their surroundings echo their musical legacy'",
+    
+    "Design & Technical Requirements - Strive for Maximum Style, Usability, and Embeddability:",
+    "1. Top-Level Container: The entire HTML output you generate MUST be wrapped in a single `div` with the class `ai-container`. For example: `<div class=\"ai-container\">...all your content...</div>`.",
+    "2. Output Format: Generate ONLY pure HTML code suitable for direct embedding within a `<body>` tag. ABSOLUTELY NO `<html>`, `<head>`, or `<body>` tags in your output.",
+    "3. Code Purity: Your entire response must be *only* the HTML code block itself. NO markdown, NO explanations, NO conversational remarks, NO comments outside of HTML comments if absolutely necessary for structure (e.g., `<!-- Section: Analysis -->`).",
+    
+    "4. Visual Styling (CSS) - Scoped to '.ai-container':",
+    "   - Embed all CSS within `<style>` tags directly in the HTML output, preferably at the beginning of the `ai-container` or immediately after its opening tag.",
+    "   - **Crucial for Scoping:** ALL your CSS rules MUST be prefixed with `.ai-container` to ensure they only affect elements within this container and do not interfere with the styles of the host page. For example, instead of `h2 { color: blue; }`, use `.ai-container h2 { color: blue; }`. Instead of `.my-button { ... }`, use `.ai-container .my-button { ... }`.",
+    "   - Avoid global selectors like `*`, `body`, or `html` unless absolutely necessary and also scoped (e.g., `.ai-container *`).",
+    "   - Aesthetic: Aim for a modern, clean, creative, and highly polished design within the `ai-container`. Think 'Spotify Wrapped' but embeddable. Use engaging visuals, smooth transitions, and micro-interactions where appropriate using CSS.",
+    "   - Color Palette: Use a visually appealing and harmonious color palette within the `ai-container`. Consider using modern gradients or distinct, stylish accent colors that enhance readability and visual hierarchy.",
+    "   - Typography: Use clear, modern web-safe fonts. Strongly consider using a Google Font (e.g., Montserrat, Open Sans, Lato) via `@import` within the `<style>` tags for a more refined look. Ensure font styles are scoped to `.ai-container`.",
+    "   - Layout: The `ai-container` itself should utilize `width: 100%;`. Inside it, prioritize concise presentation of insights. Use ample whitespace and clear visual separation between sections (e.g., using cards, borders, or background color changes for different sections like analysis, recommendations, game).",
+
+    "5. Data Visualization (Chart.js Strongly Preferred for Style & Interactivity - Scoped):",
+    "   - Represent top genres using a visually appealing Pie or Doughnut chart within the `ai-container`.",
+    "   - Represent top artists using a sleek Bar chart within the `ai-container`.",
+    "   - Use Chart.js: Include the Chart.js library via CDN (`<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>`) and then provide the necessary JavaScript within `<script>` tags (placed appropriately, usually before the closing of the `ai-container` or at the end of the HTML snippet) to render the charts. Ensure chart container elements have unique IDs if necessary, and JavaScript targets these correctly.",
+    "   - Ensure charts are well-styled (custom colors matching the palette, clear labels, informative tooltips, possibly subtle animations) to integrate seamlessly with the `ai-container`'s overall aesthetic.",
+    "   - Fallback: If Chart.js implementation proves too complex, you may use pure CSS charts, ensuring all styles are scoped with `.ai-container`.",
+
+    "6. Responsiveness - Optimizing for Both Mobile and Desktop (within '.ai-container'):",
+    "   - Mobile-First Design: Ensure all elements within `ai-container` are perfectly legible and functional on mobile devices.",
+    "   - Stacking on Mobile: On mobile screens, ensure that major content blocks within `ai-container` (like a chart and its accompanying text, or two separate charts, or the game area) stack vertically. Use CSS Flexbox (`display: flex; flex-direction: column;`) or CSS Grid for robust single-column layouts on smaller screens, all scoped with `.ai-container`.",
+    "   - Rich Desktop Layout: On wider screens, leverage the available space within `ai-container` for a more engaging multi-element layout. For instance, display charts side-by-side with their analyses, or arrange recommendations in a grid. The design should feel expansive and utilize the screen real estate effectively. Use media queries and scoped CSS to adjust `flex-direction` to `row`, modify grid layouts, or reveal desktop-specific enhancements.",
+    "   - Height Constraints for Visuals: Graphs and other large visual elements within `ai-container` should generally maintain a `max-height` (e.g., `70vh` to `85vh`, adjust based on content) to maximize visibility without causing excessive page scrolling on any device.",
+    "   - Crucial Mobile Constraint (Scoped): Reiterate for emphasis: on mobile devices, do NOT display two distinct, major objects within `ai-container` on the same horizontal line unless they are very small and intrinsically part of a single composite visual element.",
+    
+    "Final Structure & Output Integrity:",
+    "The entire output must be a single HTML snippet starting with `<div class=\"ai-container\">` and ending with `</div>`.",
+    "Organize the HTML content logically into clearly demarcated sections within `ai-container`, potentially using headings and divs, for 'Musical Analysis', 'Artist & Song Recommendations', and 'Interactive Game'.",
+    "All JavaScript, including for Chart.js and any interactive game, must be embedded within `<script>` tags in your HTML output, and should operate on elements within the `ai-container`.",
+    "Remember, the entire output must be the HTML code block itself, and nothing else."
+]
 
 class TrackManager:
     def __init__(self):
@@ -415,23 +462,14 @@ class MusicTracker(hass.Hass):
 
         weekly_dates_str = weekly_data.get("dates", "N/A")
         daily_dates_str = daily_data.get("dates", "N/A") # Get daily dates
-        if not weekly_dates_str:
+        if weekly_dates_str == "N/A":
             weekly_dates_str = daily_dates_str
 
-        prompt_lines = [
-            "My listening data:",
-            f"{weekly_dates_str}.",
-            "Analyze my listening habits to reveal my musical preferences—genres, moods, and artists I gravitate towards.",
-            "Offer positive insights and recommend new artists and songs I might enjoy, including fun trivia about them.",
-            "Reply in simple HTML for direct embedding in <body>, without <html> or <body> tags.",
-            "Use inline CSS to create visually appealing pie charts or bar graphs for genres and top artists.",
-            "Alternatively, you may use Chart.js for enhanced data visualization.",
-            "Prioritize concise insights with a creative design. Optimize for desktop and mobile. use 100% width",
-            "Provide only pure HTML code—no remarks, explanations, or comments.",
-        ] 
-
+        prompt_lines = AI_PROMPT
+        
         # Weekly Songs
         prompt_lines.extend([
+            f"My listening data:{weekly_dates_str}."
             "\nTop Weekly Songs Data (up to 100):",
             "| Artist | Title | Plays |",
             "|---|---|---|"
@@ -842,7 +880,6 @@ class MusicTracker(hass.Hass):
     def get_previous_chart_data(self, type_of_chart, period_identifier):
         self.log(f"Getting previous chart data for {type_of_chart}/{period_identifier}", level="DEBUG")
 
-        # הגדרת תנאי תאריכים לכל תקופה
         period_conditions = {
             "daily":   "date(timestamp) = date('now','-1 day')",
             "weekly":  "date(timestamp) >= date('now','-14 days') AND date(timestamp) < date('now','-7 days')",
