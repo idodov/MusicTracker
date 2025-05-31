@@ -12,7 +12,6 @@ music_tracker:
   duration: 30
   min_songs_for_album: 4
   update_time: "23:59:00"
-  run_on_startup: true
   media_players:
     - media_player.patio
     - media_player.kitchen
@@ -20,8 +19,8 @@ music_tracker:
     - media_player.living_room
     - media_player.dining_room
   html_output_path: "/homeassistant/www/music_charts.html"
-  # NEEDS APPDAEMON 4.5+ 
   ai_service: "google_generative_ai_conversation/generate_content"
+  run_on_startup: true
 """
 import appdaemon.plugins.hass.hassapi as hass
 import datetime
@@ -32,6 +31,7 @@ import threading
 import json
 import os 
 import jinja2
+import random
 
 TEMPLATE = '''
 <!DOCTYPE html>
@@ -116,7 +116,7 @@ TEMPLATE = '''
 {% for key in cols.values() %}
 <td dir="auto"><bdi>{{ item[key] }}</bdi></td>
 {% endfor %}
-{% if current_period != 'yearly' %} {# <--- Conditional data cell #}
+{% if current_period != 'yearly' %} 
 <td dir="auto" nowrap>
     {% if item.new_entry %}<span class="change-new">🆕</span>
     {% elif item.change > 0 %}<span class="change-up">▲{{ item.change }}</span>
@@ -132,10 +132,10 @@ TEMPLATE = '''
 <section id="chart-{{ period }}" class="chart-section">
 <h2 dir="auto"><bdi>Top {{ period|capitalize }} ({{ data.dates }})</bdi></h2> 
 <div class="chart-tables">
-    {{ render_table('🎵 Songs', data.songs, {'Artist':'artist','Title':'title','▶️':'plays'}, period) }} {# <--- Passed period #}
-    {{ render_table('👤 Artists', data.artists, {'Artist':'artist','▶️':'plays'}, period) }} {# <--- Passed period #}
-    {{ render_table('💽 Albums', data.albums, {'Album':'album','Artist':'artist','▶️':'tracks'}, period) }} {# <--- Passed period #}
-    {{ render_table('📻 Channels/Playlists', data.media_channels, {'Channel':'channel','▶️':'plays'}, period) }} {# <--- Passed period #}
+    {{ render_table('🎵 Songs', data.songs, {'Artist':'artist','Title':'title','▶️':'plays'}, period) }}
+    {{ render_table('👤 Artists', data.artists, {'Artist':'artist','▶️':'plays'}, period) }}
+    {{ render_table('💽 Albums', data.albums, {'Artist':'artist','Album':'album','▶️':'tracks'}, period) }}
+    {{ render_table('📻 Channels/Playlists', data.media_channels, {'Channel':'channel','▶️':'plays'}, period) }}
 </div>
 </section>
 {% endfor %}
@@ -181,14 +181,45 @@ TEMPLATE = '''
 
 AI_PROMPT = [
     "You are a 'Musical Insights Web Weaver,' an AI expert in analyzing music listening data and presenting it in a self-contained, visually stunning, modern, and engaging HTML widget.",
-    "Your primary goal is to create a beautiful, responsive, and insightful report as an embeddable HTML component based on the provided listening data, ensuring an excellent experience on both mobile and desktop.",
+    "Your primary goal is to create a beautiful, responsive, and insightful report as an embeddable HTML component based on the provided listening data, ensuring an excellent experience on both mobile and desktop. Embrace creativity in the visual presentation while adhering to the technical and content requirements.",
 
     "Core Task & Content Requirements:",
     "1. Analyze Listening Habits: Deeply analyze the provided data to reveal my musical preferences, focusing on: top genres, top artists, predominant moods (if inferable), and any notable listening patterns or shifts.",
     "2. Deliver Positive Insights: Frame your analysis with positive and encouraging language.",
     "3. Artist & Song Recommendations: Suggest 3-5 new artists and specific songs I might enjoy based on my habits. For each recommendation, include a piece of fun, engaging trivia about the artist or song.",
-    "4. Interactive Game Element (Highly Desired): Design and implement a small, fun, interactive game. This could be a trivia quiz, a 'guess the lyric/artist' challenge, or a simple matching game related to my music preferences or the recommendations. Use HTML, CSS, and embedded JavaScript to make it interactive. The game should be self-contained within your HTML output. Do not ask the user to type answer.",
-    "5. You can suprise me with ai generated image by 'https://pollinations.ai/p/'prompt'?model=turbo' of my top artists. by prompt (include artist names) 'Imagine these iconic artists reborn in a stunning, cartoon/paint/realistic masterpiece. Their expressions radiate emotion, their surroundings echo their musical legacy'",
+    "4. Interactive Game Element (Highly Desired): Design and implement a small, fun, interactive game. This could be a trivia quiz (based on listening data or general music knowledge), a 'guess the lyric/artist' challenge, or a simple matching game related to my music preferences or the recommendations. Use HTML, CSS, and embedded JavaScript to make it interactive. The game should be self-contained within your HTML output. Do not ask the user to type answers; use buttons or clickable elements.",
+    "5. **Dynamic & Creative AI-Generated Artist Visualization (Mandatory):**",
+    "   - Task: Generate a single, visually striking image featuring 2-3 of the user's top artists. This is the ONLY image to be included in the HTML output.",
+    "   - Artist Selection: Identify the top 2 or 3 artists from the analyzed data. Let's refer to them as [Identified_Artist_1], [Identified_Artist_2], (and [Identified_Artist_3] if applicable).",
+    "   - **Crafting a Unique Pollinations.ai Prompt (Crucial Instructions):**",
+    "       - **MUST BE DYNAMIC & CREATIVE:** For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. Do NOT use a static prompt or repeat previous prompt structures verbatim.",
+    "       - **MUST INCLUDE ARTIST NAMES:** The prompt you generate **MUST explicitly incorporate the actual names** of [Identified_Artist_1] and [Identified_Artist_2] (and [Identified_Artist_3] if three are chosen). Replace these placeholders with the real artist names from the data.",
+    "       - **BE INVENTIVE - Combine Elements:** To create diverse and engaging visuals, combine 2-4 elements from the categories below, or invent your own variations. The goal is a fresh concept each time.",
+    "           - **Inspiration for Prompt Elements (Mix & Match):**",
+    "               - **Artistic Styles:** Photorealistic, Impressionistic, Abstract Expressionism, Surrealist, Pop Art, Cyberpunk, Steampunk, Art Nouveau, Renaissance Painting, Japanese Ukiyo-e, Bold Cartoon, Graphic Novel, Watercolor, Oil Painting, High-Detail 3D Render, Pixel Art, Glitch Art, Anime Cel Shading, Psychedelic Art.",
+    "               - **Moods/Atmospheres:** Energetic, Serene, Melancholic, Mysterious, Joyful, Epic, Whimsical, Dark & Brooding, Ethereal, Nostalgic, Futuristic, Retro-Vintage, Dreamlike, Intense, Playful.",
+    "               - **Settings/Backgrounds:** Cosmic nebula, Lush alien jungle, Abstract geometric void, Neo-futuristic cityscape, Mystical underwater kingdom, Volcanic plains of another world, Dream-like cloudscape, Grand fantastical concert stage, Intimate glowing studio, A specific historical era reimagined, A surreal dimension.",
+    "               - **Artist Actions/Interactions:** Performing an epic duet, Composing music amidst floating notes, Posing heroically as mythical figures, Merging with abstract musical energy, Interacting with symbolic objects representing their biggest hits, Levitating in a meditative state, Engaged in a creative battle of bands.",
+    "               - **Visual Motifs/Themes:** Flowing musical staves turning into rivers, Geometric soundwaves, Swirling vibrant color explosions, Beams of pure light, Nature elements (flowers, trees, constellations) intertwined with instruments, Technological implants or attire, Mythical creatures as companions, Abstract energy patterns, Iconic symbols subtly woven into their attire or surroundings.",
+    "       - **Example of the AI's Process (for your internal generation logic - DO NOT output this example verbatim):**",
+    "           1. Top artists identified: e.g., 'Dua Lipa', 'The Weeknd'.",
+    "           2. AI decides to combine: Style=Cyberpunk, Mood=Mysterious, Setting=Neo-futuristic cityscape, Action=Posing heroically.",
+    "           3. AI constructs prompt: 'Cyberpunk_showdown_Dua_Lipa_and_The_Weeknd_posing_heroically_atop_a_neo-futuristic_cityscape_skyscraper_at_night_neon_glow_rain_slicked_streets_mysterious_atmosphere_highly_detailed_cinematic_lighting_octane_render'.",
+    "           (Another example): 'Surrealist_dreamscape_of_[Identified_Artist_1]_and_[Identified_Artist_2]_floating_in_a_cosmic_nebula_playing_instruments_made_of_starlight_ethereal_mood_vibrant_colors_impressionistic_brush_strokes'.",
+    "       - **URL Encoding is Critical:** Before constructing the final URL, ensure the entire crafted prompt string (including artist names with spaces, e.g., 'Dua_Lipa' or 'Dua%20Lipa') is properly URL-encoded.",
+    "   - Pollinations.ai Model: Choose either 'turbo' or 'flux' for the `model` parameter. For example, `model=flux` or `model=turbo`.",
+    "   - URL Construction: Generate the full image URL: `https://pollinations.ai/p/[URL_ENCODED_PROMPT]?model=[SELECTED_MODEL]`.",
+    "   - Image Embedding: Embed this image using an `<img>` tag. Include a descriptive `alt` text, e.g., `alt=\"AI-generated artwork of top artists: [Identified_Artist_1], [Identified_Artist_2]\"`.",
+    "   - **Image Styling for Optimal Fit:** Apply CSS (scoped to `.ai-container`) to the `<img>` tag to ensure it is responsive and visually appealing on both mobile and desktop views. Styles should include:",
+    "       - `display: block;`",
+    "       - `max-width: 90%; /* Or a fixed max-width like 600px, but % is good for responsiveness */`",
+    "       - `height: auto;`",
+    "       - `margin: 20px auto; /* Centers the image and adds vertical spacing */`",
+    "       - `border-radius: 12px; /* Soft rounded corners */`",
+    "       - `box-shadow: 0 6px 20px rgba(0,0,0,0.15); /* Subtle depth */`",
+    "       - `object-fit: cover; /* Ensures the image covers its allocated space well, may crop slightly to fill bounds */`",
+    "       - `max-height: 45vh; /* Prevents the image from being excessively tall, especially on mobile. Adjust if needed. */`",
+
     "Design & Technical Requirements - Strive for Maximum Style, Usability, and Embeddability:",
     "1. Top-Level Container: The entire HTML output you generate MUST be wrapped in a single `div` with the class `ai-container`. For example: `<div class=\"ai-container\">...all your content...</div>`.",
     "2. Output Format: Generate ONLY pure HTML code suitable for direct embedding within a `<body>` tag. ABSOLUTELY NO `<html>`, `<head>`, or `<body>` tags in your output.",
@@ -196,34 +227,35 @@ AI_PROMPT = [
     
     "4. Visual Styling (CSS) - Scoped to '.ai-container':",
     "   - Embed all CSS within `<style>` tags directly in the HTML output, preferably at the beginning of the `ai-container` or immediately after its opening tag.",
-    "   - **Crucial for Scoping:** ALL your CSS rules MUST be prefixed with `.ai-container` to ensure they only affect elements within this container and do not interfere with the styles of the host page. For example, instead of `h2 { color: blue; }`, use `.ai-container h2 { color: blue; }`. Instead of `.my-button { ... }`, use `.ai-container .my-button { ... }`.",
+    "   - **Crucial for Scoping:** ALL your CSS rules MUST be prefixed with `.ai-container` to ensure they only affect elements within this container and do not interfere with the styles of the host page.",
     "   - Avoid global selectors like `*`, `body`, or `html` unless absolutely necessary and also scoped (e.g., `.ai-container *`).",
-    "   - Aesthetic: Aim for a modern, clean, creative, and highly polished design within the `ai-container`. Think 'Spotify Wrapped' but embeddable. Use engaging visuals, smooth transitions, and micro-interactions where appropriate using CSS.",
-    "   - Color Palette: Use a visually appealing and harmonious color palette within the `ai-container`. Consider using modern gradients or distinct, stylish accent colors that enhance readability and visual hierarchy.",
-    "   - Typography: Use clear, modern web-safe fonts. Strongly consider using a Google Font (e.g., Montserrat, Open Sans, Lato) via `@import` within the `<style>` tags for a more refined look. Ensure font styles are scoped to `.ai-container`.",
-    "   - Layout: The `ai-container` itself should utilize `width: 100%;`. Inside it, prioritize concise presentation of insights. Use ample whitespace and clear visual separation between sections (e.g., using cards, borders, or background color changes for different sections like analysis, recommendations, game).",
+    "   - **Image Usage Constraint:** The ONLY image to be embedded in the HTML is the AI-generated artist visualization (specified in Core Task 5). Do NOT include any other static images, decorative icons (unless part of a standard icon font library used for clear UI functions), or background images directly in the HTML or CSS beyond simple gradients.",
+    "   - **Aesthetic Freedom & Quality**: Strive for a **modern, clean, creative, and highly polished** design within the `ai-container`. Your aesthetic should be a **unique and engaging interpretation**. Use engaging visuals, smooth transitions, and micro-interactions where appropriate using CSS.",
+    "   - **Color Palette**: Develop a **visually appealing and harmonious color palette** that reflects your creative design.",
+    "   - **Typography**: Use clear, modern web-safe fonts that **contribute to your chosen aesthetic**. You *may* incorporate Google Fonts.",
+    "   - **Chart Data Presentation**: For bar charts (e.g., top artists), avoid using a generic 'Others' category if possible; focus on displaying distinct top entries clearly.",
+    "   - Layout: The `ai-container` itself should utilize `width: 100%;`. Use ample whitespace and clear visual separation between sections.",
 
-    "5. Data Visualization (Chart.js Strongly Preferred for Style & Interactivity - Scoped):",
-    "   - Represent top genres using a visually appealing Pie or Doughnut chart within the `ai-container`.",
-    "   - Represent top artists using a sleek Bar chart within the `ai-container`.",
-    "   - Use Chart.js: Include the Chart.js library via CDN (`<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>`) and then provide the necessary JavaScript within `<script>` tags (placed appropriately, usually before the closing of the `ai-container` or at the end of the HTML snippet) to render the charts. Ensure chart container elements have unique IDs if necessary, and JavaScript targets these correctly.",
-    "   - Ensure charts are well-styled (custom colors matching the palette, clear labels, informative tooltips, possibly subtle animations) to integrate seamlessly with the `ai-container`'s overall aesthetic.",
-    "   - Fallback: If Chart.js implementation proves too complex, you may use pure CSS charts, ensuring all styles are scoped with `.ai-container`.",
+    "5. Data Visualization (Chart.js Strongly Preferred):",
+    "   - Represent top genres using a Pie or Doughnut chart.",
+    "   - Represent top artists using a Bar chart.",
+    "   - Include Chart.js via CDN and embed JavaScript to render charts. Ensure charts are well-styled to integrate with your overall creative design.",
+    "   - Fallback: Pure CSS charts if Chart.js is too complex, styled scoped to `.ai-container`.",
 
-    "6. Responsiveness - Optimizing for Both Mobile and Desktop (within '.ai-container'):",
-    "   - Mobile-First Design: Ensure all elements within `ai-container` are perfectly legible and functional on mobile devices.",
-    "   - Stacking on Mobile: On mobile screens, ensure that major content blocks within `ai-container` (like a chart and its accompanying text, or two separate charts, or the game area) stack vertically. Use CSS Flexbox (`display: flex; flex-direction: column;`) or CSS Grid for robust single-column layouts on smaller screens, all scoped with `.ai-container`.",
-    "   - Rich Desktop Layout: On wider screens, leverage the available space within `ai-container` for a more engaging multi-element layout. For instance, display charts side-by-side with their analyses, or arrange recommendations in a grid. The design should feel expansive and utilize the screen real estate effectively. Use media queries and scoped CSS to adjust `flex-direction` to `row`, modify grid layouts, or reveal desktop-specific enhancements.",
-    "   - Height Constraints for Visuals: Graphs and other large visual elements within `ai-container` should generally maintain a `max-height` (e.g., `70vh` to `85vh`, adjust based on content) to maximize visibility without causing excessive page scrolling on any device.",
-    "   - Crucial Mobile Constraint (Scoped): Reiterate for emphasis: on mobile devices, do NOT display two distinct, major objects within `ai-container` on the same horizontal line unless they are very small and intrinsically part of a single composite visual element.",
+    "6. **Responsiveness - Dual Optimization for Mobile & Desktop (within '.ai-container')**:",
+    "   - **Overall Viewport Consideration:** The primary interactive elements and key information within `.ai-container` should be largely visible upon loading, aiming to fit within approximately `85vh` of the viewport height.",
+    "   - **Layout Strategy:** Employ CSS Flexbox or Grid.",
+    "   - **Mobile View (e.g., < 768px):** Key content blocks (charts, AI image, text, game) MUST stack vertically.",
+    "   - **Desktop View (e.g., >= 768px):** Arrange related sub-containers side-by-side (e.g., chart next to analysis, AI image next to text, use 100% container width)",
+    "   - **Max Height for Individual Visuals:** Charts and the AI image should have sensible `max-height` settings (e.g., AI image `45vh` as per Core Task 5, charts `300px-400px`) to support the overall `85vh` goal and prevent excessive vertical space usage.",
+    "   - **No Horizontal Scrolling** for main content.",
     
     "Final Structure & Output Integrity:",
     "The entire output must be a single HTML snippet starting with `<div class=\"ai-container\">` and ending with `</div>`.",
-    "Organize the HTML content logically into clearly demarcated sections within `ai-container`, potentially using headings and divs, for 'Musical Analysis', 'Artist & Song Recommendations', and 'Interactive Game'.",
-    "All JavaScript, including for Chart.js and any interactive game, must be embedded within `<script>` tags in your HTML output, and should operate on elements within the `ai-container`.",
+    "Organize content logically into sections: 'Musical Analysis' (including AI artist image), 'Artist & Song Recommendations', 'Interactive Game'.",
+    "All JavaScript (Chart.js, game) must be embedded and operate within `.ai-container`.",
     "Remember, the entire output must be the HTML code block itself, and nothing else."
 ]
-
 class TrackManager:
     def __init__(self):
         self.played_tracks = {} 
@@ -269,7 +301,7 @@ class MusicTracker(hass.Hass):
         self.duration_to_consider_played = self.args.get("duration", 30) 
         self.min_songs_for_album_chart = self.args.get("min_songs_for_album", 3)
         self.chart_update_time = self.args.get("update_time", "00:00:00")
-        self.db_path = self.args.get("db_path")
+        self.db_path = self.args.get("db_path", "/config/music_data_history.db")
         self.html_output_path = self.args.get("html_output_path", "/homeassistant/www/music_charts.html")
         self.ai_service = self.args.get("ai_service", False)
 
@@ -457,43 +489,44 @@ class MusicTracker(hass.Hass):
             self.log(f"Failed to write HTML file to {self.html_output_path}: {e}", level="ERROR")
 
     def build_prompt_from_chart_data(self, charts_for_prompt):
-        weekly_data = charts_for_prompt.get("weekly", {})
-        daily_data = charts_for_prompt.get("daily", {}) # Get daily data
+        prompt_lines = list(AI_PROMPT) 
+        potential_rates = ["daily", "weekly", "monthly", "yearly"]
 
-        weekly_dates_str = weekly_data.get("dates", "N/A")
-        daily_dates_str = daily_data.get("dates", "N/A") # Get daily dates
-        if weekly_dates_str == "N/A":
-            weekly_dates_str = daily_dates_str
-            weekly_data = daily_data
-
-        prompt_lines = AI_PROMPT
+        available_rate_keys = [
+            rate for rate in potential_rates 
+            if rate in charts_for_prompt and charts_for_prompt[rate] 
+        ]
         
-        # Weekly Songs
+        selected_rate_key = None
+        data_for_selected_rate = {}
+        dates_str_for_selected_rate = "N/A"
+        display_name_for_rate = "Selected Period"
+
+        if available_rate_keys:
+            selected_rate_key = random.choice(available_rate_keys)
+            data_for_selected_rate = charts_for_prompt.get(selected_rate_key, {}) 
+            dates_str_for_selected_rate = data_for_selected_rate.get("dates", "N/A")
+            display_name_for_rate = selected_rate_key.capitalize()
+        else:
+            display_name_for_rate = "Overall"
+
         prompt_lines.extend([
-            f"My listening data:{weekly_dates_str}."
-            "\nTop Weekly Songs Data (up to 100):",
+            f"My listening data for the {display_name_for_rate} period covers: {dates_str_for_selected_rate}.",
+            f"\nTop {display_name_for_rate} Songs Data (up to 100):",
             "| Artist | Title | Plays |",
             "|---|---|---|"
         ])
-        songs_for_weekly_prompt = weekly_data.get("songs", [])[:100]
-        if songs_for_weekly_prompt:
-            for song_item in songs_for_weekly_prompt:
-                prompt_lines.append(f"| {song_item.get('artist','N/A')} | {song_item.get('title','N/A')} | {song_item.get('plays','N/A')} |")
+        
+        songs_to_list = data_for_selected_rate.get("songs", [])[:100]
+        
+        if songs_to_list:
+            for song_item in songs_to_list:
+                artist = song_item.get('artist', 'N/A')
+                title = song_item.get('title', 'N/A')
+                plays = song_item.get('plays', 'N/A')
+                prompt_lines.append(f"| {artist} | {title} | {plays} |")
         else:
-            prompt_lines.append("| No weekly song data available. | | |")
-
-        # Daily Songs
-        #prompt_lines.extend([
-        #    "\nTop Daily Songs Data (up to 100):",
-        #    "| Artist | Title | Plays |",
-        #    "|---|---|---|"
-        #])
-        #songs_for_daily_prompt = daily_data.get("songs", [])[:100] # Get daily songs
-        #if songs_for_daily_prompt:
-        #    for song_item in songs_for_daily_prompt:
-        #        prompt_lines.append(f"| {song_item.get('artist','N/A')} | {song_item.get('title','N/A')} | {song_item.get('plays','N/A')} |")
-        #else:
-        #    prompt_lines.append("| No daily song data available. | | |")
+            prompt_lines.append(f"| No {display_name_for_rate.lower()} song data available for this period. | | |")
             
         return "\n".join(prompt_lines)
 
