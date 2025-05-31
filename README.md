@@ -54,7 +54,16 @@ aspect_ratio: 100%
 3.  **Ensure `www` Directory (for HTML output):**
     *   If you want to access the HTML page directly via Home Assistant's web server, ensure the `html_output_path` points to a location within your Home Assistant `config/www/` directory. For example, if `html_output_path` is `/config/www/music_charts.html`, you can access it at `http://<your_home_assistant_ip>:8123/local/music_charts.html`.
     *   If the `www` directory doesn't exist in your Home Assistant configuration directory, create it.
-4.  **Restart AppDaemon.**
+    *   The `www` directory should also define in `configuration.yaml` (to gain access to: `http://homeassistant.local:8123/local/music_charts.html`)
+```yaml
+homeassistant:
+  allowlist_external_urls:
+    - http://192.168.86.220:8123 # HA IP EXAMPLE
+    - http://homeassistant.local:8123
+
+  allowlist_external_dirs:
+    - "/config/www"
+```
 
 ## Configuration
 
