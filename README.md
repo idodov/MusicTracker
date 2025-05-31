@@ -99,7 +99,7 @@ music_charts: # This is the AppDaemon app instance name, can be anything unique
   min_songs_for_album: 3
   
   # Optional: Time to automatically update the charts daily (HH:MM:SS format).
-  # Default: "23:59:00"
+  # Default: "00:00:00"
   update_time: "23:59:00"
   
   # Optional: Home Assistant input_boolean entity_id to manually trigger chart updates.
