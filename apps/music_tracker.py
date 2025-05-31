@@ -44,44 +44,129 @@ TEMPLATE = '''
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Music Charts</title>
 <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f4f9; color: #333; padding: 1em; }
+    :root {
+      color-scheme: light dark;
+      --bg-light: #f4f4f9;
+      --bg-dark: #1a1a1a;
+      --text-light: #333;
+      --text-dark: #eee;
+      --card-light: #fff;
+      --card-dark: #2a2a2a;
+      --accent-light: #3498db;
+      --accent-dark: #2980b9;
+      --hover-light: #d0e7f9;
+      --hover-dark: #34495e;
+    }
 
-    #refreshPageButton {
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        background-color: var(--bg-light);
+        color: var(--text-light);
+        padding: 1em;
+        transition: background 0.3s ease, color 0.3s ease;
+    }
+    body.dark-mode {
+        background-color: var(--bg-dark);
+        color: var(--text-dark);
+    }
+
+    #refreshPageButton, #toggleDarkMode {
         padding: 0.4em 1.0em;
         font-size: 0.75rem;
         color: white;
-        background-color: #007bff; /* A nice blue, adjust as needed */
+        background-color: #007bff;
         border: none;
         border-radius: 5px;
         cursor: pointer;
         transition: background-color 0.2s ease-in-out;
     }
-    #refreshPageButton:hover {
-        background-color: #0056b3; /* Darker blue on hover */
+    #refreshPageButton:hover, #toggleDarkMode:hover {
+        background-color: #0056b3;
     }
 
-    header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 1em; }
-    h1 { font-size: 1.6rem; color: #2c3e50; }
-    #controls label { margin-right: 1em; font-size: 0.9rem; color: #34495e; }
-    #generated-at { font-size: 0.8rem; color: #7f8c8d; }
-    main { display: flex; flex-direction: column; gap: 2em; }
-    .chart-section { background: #fff; border-radius: 8px; padding: 1em; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .chart-section h2 { color: #34495e; margin-bottom: 0.5em; }
+    header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1em;
+    }
+    h1 { font-size: 1.6rem; color: var(--accent-light); }
+    body.dark-mode h1 { color: var(--accent-dark); }
+
+    #controls label {
+        margin-right: 1em;
+        font-size: 0.9rem;
+        color: #34495e;
+    }
+    body.dark-mode #controls label {
+        color: #ccc;
+    }
+    #generated-at {
+        font-size: 0.8rem;
+        color: #7f8c8d;
+    }
+    main {
+        display: flex;
+        flex-direction: column;
+        gap: 2em;
+    }
+    .chart-section {
+        background: var(--card-light);
+        border-radius: 8px;
+        padding: 1em;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    body.dark-mode .chart-section {
+        background: var(--card-dark);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .chart-section h2 { color: var(--accent-light); margin-bottom: 0.5em; }
+    body.dark-mode .chart-section h2 { color: var(--accent-dark); }
+
     .chart-tables { display: flex; flex-wrap: wrap; gap: 1em; }
     .table-container { flex: 1 1 calc(33% - 1em); min-width: 300px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 0.5em; }
-    th, td { padding: 0.5em; text-align: start; word-break: break-word;font-size: 0.8rem; }
-    th { background: #3498db; color: #fff; position: sticky; top: 0; z-index: 1;}
-    tbody tr:nth-child(even) { background: #ecf0f1; }
-    tbody tr:hover { background: #d0e7f9; }
-    h3 { margin: 0.5em 0; font-size: 1.0rem; color: #2980b9; }
-    @media (max-width: 768px) {
-      .table-container { flex: 1 1 100%; }
-      header { flex-direction: column; align-items: flex-start; }
-      #controls { margin-top: 0.5em; margin-bottom: 0.5em; }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 0.5em;
     }
-    /* #ai-analysis { margin-top: 1em; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; padding: 1em; } */
+    th, td {
+        padding: 0.5em;
+        text-align: start;
+        word-break: break-word;
+        font-size: 0.8rem;
+    }
+    th {
+        background: var(--accent-light);
+        color: #fff;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    tbody tr:nth-child(even) {
+        background: #ecf0f1;
+    }
+    body.dark-mode tbody tr:nth-child(even) {
+        background: #3a3a3a;
+    }
+    tbody tr:hover {
+        background: var(--hover-light);
+    }
+    body.dark-mode tbody tr:hover {
+        background: var(--hover-dark);
+    }
+    h3 {
+        margin: 0.5em 0;
+        font-size: 1.0rem;
+        color: #2980b9;
+    }
+    @media (max-width: 768px) {
+        .table-container { flex: 1 1 100%; }
+        header { flex-direction: column; align-items: flex-start; }
+        #controls { margin-top: 0.5em; margin-bottom: 0.5em; }
+    }
     #ai-analysis h2 { color: #856404; }
     .change-up { color: green; font-weight: bold; }
     .change-down { color: red; font-weight: bold; }
@@ -98,9 +183,11 @@ TEMPLATE = '''
 <label><input type="checkbox" data-period="yearly" checked> Yearly</label>
 </div>
 <p id="generated-at">Generated at {{ generated_at }}</p>
-<button id="refreshPageButton">Refresh Page</button>
+<div>
+  <button id="refreshPageButton">Refresh Page</button>
+  <button id="toggleDarkMode">Toggle Dark Mode</button>
+</div>
 </header>
-
 <main>
 {% macro render_table(title, items, cols, current_period) %}
 <div class="table-container">
@@ -112,18 +199,10 @@ TEMPLATE = '''
 </thead>
 <tbody>
 {% for item in items %}<tr>
-<td nowrap>{{ loop.index }}</td>
-{% for key in cols.values() %}
-<td dir="auto"><bdi>{{ item[key] }}</bdi></td>
-{% endfor %}
-{% if current_period != 'yearly' %} 
-<td dir="auto" nowrap>
-    {% if item.new_entry %}<span class="change-new">🆕</span>
-    {% elif item.change > 0 %}<span class="change-up">▲{{ item.change }}</span>
-    {% elif item.change < 0 %}<span class="change-down">▼{{ (-item.change)|abs }}</span> {# <--- Corrected class="change-down" #}
-    {% else %} — {% endif %}
-</td>
-{% endif %} {# <--- End conditional data cell #}
+<td nowrap>{{ loop.index }}</td>{% for key in cols.values() %}<td dir="auto"><bdi>{{ item[key] }}</bdi></td>{% endfor %}{% if 
+current_period != 'yearly' %}<td dir="auto" nowrap>{% if item.new_entry %}<span class="change-new">🆕</span>{% elif 
+item.change > 0 %}<span class="change-up">▲{{ item.change }}</span>{% elif 
+item.change < 0 %}<span class="change-down">▼{{ (-item.change)|abs }}</span>{% else %} — {% endif %}</td>{% endif %}
 </tr>{% endfor %}
 </tbody></table>{% else %}<p>No data for {{ title }}</p>{% endif %}</div>
 {% endmacro %}
@@ -147,36 +226,47 @@ TEMPLATE = '''
 </section>
 {% endif %}
 </main>
-
 <script>
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const userDark = localStorage.getItem('dark_mode');
+    const isDark = userDark === '1' || (userDark === null && prefersDark);
+    if (isDark) document.body.classList.add('dark-mode');
+
     document.addEventListener("DOMContentLoaded", () => {
-      // Logic for the refresh button
         const refreshButton = document.getElementById('refreshPageButton');
+        const darkToggle = document.getElementById('toggleDarkMode');
         if (refreshButton) {
             refreshButton.addEventListener('click', () => {
                 window.location.reload();
             });
         }
+        if (darkToggle) {
+            darkToggle.addEventListener('click', () => {
+                const isDark = document.body.classList.toggle('dark-mode');
+                localStorage.setItem('dark_mode', isDark ? '1' : '0');
+            });
+        }
 
         const controls = document.querySelectorAll("#controls input[type=checkbox]");
         function toggleSection(period, show) {
-        const section = document.getElementById(`chart-${period}`);
-        if (section) section.style.display = show ? "" : "none";
+            const section = document.getElementById(`chart-${period}`);
+            if (section) section.style.display = show ? "" : "none";
         }
         controls.forEach(cb => {
-        const period = cb.dataset.period;
-        const stored = localStorage.getItem(`show_${period}`);
-        cb.checked = (stored===null) ? true : (stored==="1");
-        toggleSection(period, cb.checked);
-        cb.addEventListener("change", () => {
-            localStorage.setItem(`show_${period}`, cb.checked?"1":"0");
+            const period = cb.dataset.period;
+            const stored = localStorage.getItem(`show_${period}`);
+            cb.checked = (stored===null) ? true : (stored==="1");
             toggleSection(period, cb.checked);
-        });
+            cb.addEventListener("change", () => {
+                localStorage.setItem(`show_${period}`, cb.checked?"1":"0");
+                toggleSection(period, cb.checked);
+            });
         });
     });
 </script>
 </body>
 </html>
+
 '''
 
 AI_PROMPT = [
@@ -590,7 +680,9 @@ class MusicTracker(hass.Hass):
             current_track_info = {
                 "entity_id": entity_id, "artist": artist, "title": title,
                 "album": new_attributes.get("media_album_name"),
-                "media_channel": new_attributes.get("media_channel") or new_attributes.get("source")
+                "media_channel": new_attributes.get("media_channel") or new_attributes.get("source"),
+                "media_playlist": new_attributes.get("media_playlist") or new_attributes.get("source")
+
             }
             
             self.log(f"{entity_id} playing '{title}'. Scheduling storage in {self.duration_to_consider_played}s.", level="DEBUG")
@@ -625,6 +717,7 @@ class MusicTracker(hass.Hass):
         title = track_info_original["title"]
         album = track_info_original["album"]
         media_channel = track_info_original["media_channel"]
+        media_playlist = track_info_original["media_playlist"]
 
         if title.lower() in ["tv", "unknown", "advertisement"]: return
 
@@ -639,7 +732,7 @@ class MusicTracker(hass.Hass):
         self.track_manager.add_track(track_identifier) 
 
         if not cleaned_album or cleaned_album.lower() == "unknown album": cleaned_album = cleaned_title
-        if not media_channel: media_channel = "Unknown Source"
+        if not media_channel: media_channel = media_playlist
 
         self.log(f"Storing track from {entity_id}: {artist} | {cleaned_title} | {cleaned_album} | {media_channel}")
         self.store_track_in_db(artist, cleaned_title, cleaned_album, media_channel)
