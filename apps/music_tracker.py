@@ -12,6 +12,7 @@ music_tracker:
   duration: 30
   min_songs_for_album: 4
   update_time: "23:59:00"
+  run_on_startup: true
   media_players:
     - media_player.patio
     - media_player.kitchen
@@ -19,8 +20,8 @@ music_tracker:
     - media_player.living_room
     - media_player.dining_room
   html_output_path: "/homeassistant/www/music_charts.html"
+  # NEEDS APPDAEMON 4.5+ 
   ai_service: "google_generative_ai_conversation/generate_content"
-  run_on_startup: true
 """
 import appdaemon.plugins.hass.hassapi as hass
 import datetime
@@ -188,7 +189,6 @@ AI_PROMPT = [
     "3. Artist & Song Recommendations: Suggest 3-5 new artists and specific songs I might enjoy based on my habits. For each recommendation, include a piece of fun, engaging trivia about the artist or song.",
     "4. Interactive Game Element (Highly Desired): Design and implement a small, fun, interactive game. This could be a trivia quiz, a 'guess the lyric/artist' challenge, or a simple matching game related to my music preferences or the recommendations. Use HTML, CSS, and embedded JavaScript to make it interactive. The game should be self-contained within your HTML output. Do not ask the user to type answer.",
     "5. You can suprise me with ai generated image by 'https://pollinations.ai/p/'prompt'?model=turbo' of my top artists. by prompt (include artist names) 'Imagine these iconic artists reborn in a stunning, cartoon/paint/realistic masterpiece. Their expressions radiate emotion, their surroundings echo their musical legacy'",
-    
     "Design & Technical Requirements - Strive for Maximum Style, Usability, and Embeddability:",
     "1. Top-Level Container: The entire HTML output you generate MUST be wrapped in a single `div` with the class `ai-container`. For example: `<div class=\"ai-container\">...all your content...</div>`.",
     "2. Output Format: Generate ONLY pure HTML code suitable for direct embedding within a `<body>` tag. ABSOLUTELY NO `<html>`, `<head>`, or `<body>` tags in your output.",
@@ -464,6 +464,7 @@ class MusicTracker(hass.Hass):
         daily_dates_str = daily_data.get("dates", "N/A") # Get daily dates
         if weekly_dates_str == "N/A":
             weekly_dates_str = daily_dates_str
+            weekly_data = daily_data
 
         prompt_lines = AI_PROMPT
         
@@ -482,17 +483,17 @@ class MusicTracker(hass.Hass):
             prompt_lines.append("| No weekly song data available. | | |")
 
         # Daily Songs
-        prompt_lines.extend([
-            "\nTop Daily Songs Data (up to 100):",
-            "| Artist | Title | Plays |",
-            "|---|---|---|"
-        ])
-        songs_for_daily_prompt = daily_data.get("songs", [])[:100] # Get daily songs
-        if songs_for_daily_prompt:
-            for song_item in songs_for_daily_prompt:
-                prompt_lines.append(f"| {song_item.get('artist','N/A')} | {song_item.get('title','N/A')} | {song_item.get('plays','N/A')} |")
-        else:
-            prompt_lines.append("| No daily song data available. | | |")
+        #prompt_lines.extend([
+        #    "\nTop Daily Songs Data (up to 100):",
+        #    "| Artist | Title | Plays |",
+        #    "|---|---|---|"
+        #])
+        #songs_for_daily_prompt = daily_data.get("songs", [])[:100] # Get daily songs
+        #if songs_for_daily_prompt:
+        #    for song_item in songs_for_daily_prompt:
+        #        prompt_lines.append(f"| {song_item.get('artist','N/A')} | {song_item.get('title','N/A')} | {song_item.get('plays','N/A')} |")
+        #else:
+        #    prompt_lines.append("| No daily song data available. | | |")
             
         return "\n".join(prompt_lines)
 
