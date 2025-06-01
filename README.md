@@ -1,15 +1,11 @@
-# Home Assistant Music Tracker & Charts
+# AppDaemon / Home Assistant Music Tracker & Charts
 
 Track your music listening habits from Home Assistant media players and generate beautiful, dynamic HTML charts. Includes daily, weekly, monthly, and yearly top songs, artists, albums, and channels/playlists, with an optional AI-powered analysis of your music taste.
 
-![image](https://github.com/user-attachments/assets/f39d931d-1dd3-4fe9-b3f8-011f403cd1c3)
+![image](https://github.com/user-attachments/assets/01c96643-0a0e-45dc-a9eb-ddf18b060480)
 
-![image](https://github.com/user-attachments/assets/85768a3a-2a81-4ff4-b327-870d3e7ed87c)
-```yaml
-type: iframe
-url: /local/music_charts.html
-aspect_ratio: 100%
-```
+![image](https://github.com/user-attachments/assets/b94d83da-b82d-46d2-983d-93dc44c61703)
+
 
 ## Features
 
@@ -83,7 +79,7 @@ music_charts: # This is the AppDaemon app instance name, can be anything unique
   # Required: Path to the SQLite database file. 
   # It will be created if it doesn't exist.
   # Ensure AppDaemon has write permissions to this location.
-  db_path: /config/appdaemon/data/music_charts.db 
+  db_path: "/config/music_data_history.db"
   
   # Required: Full path where the generated HTML chart file will be saved.
   # For HA web access, use a path inside /config/www/
@@ -122,6 +118,24 @@ music_charts: # This is the AppDaemon app instance name, can be anything unique
 **Important Notes on Paths:**
 *   Paths like `/config/appdaemon/...` are typically used when AppDaemon is running in a Docker container alongside Home Assistant. Adjust paths based on your specific AppDaemon setup.
 *   Ensure AppDaemon has read/write permissions to the `db_path` and `html_output_path` locations.
+
+## Add "card" to Dashboard:
+
+![image](https://github.com/user-attachments/assets/f39d931d-1dd3-4fe9-b3f8-011f403cd1c3)
+
+Add a Panel (single card) dashboard:
+
+![image](https://github.com/user-attachments/assets/9c39b61a-b2a8-4147-beed-391a1ce3a4fe)
+
+Put inside the `webpage` card:
+
+![image](https://github.com/user-attachments/assets/14a88d12-ef5d-4913-a501-c7e06b37e739)
+```yaml
+type: iframe
+url: /local/music_charts.html
+aspect_ratio: 100%
+```
+
 
 ## Usage
 
