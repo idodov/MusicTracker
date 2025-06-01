@@ -171,6 +171,7 @@ TEMPLATE = '''
     .change-up { color: green; font-weight: bold; }
     .change-down { color: red; font-weight: bold; }
     .change-new { color: orange; font-weight: bold; }
+    .ai-container .chart-container { max-height: 90vh;}
 </style>
 </head>
 <body>
@@ -282,33 +283,13 @@ AI_PROMPT = [
     "   - Task: Generate a single, visually striking image featuring 2-3 of the user's top artists. This is the ONLY image to be included in the HTML output.",
     "   - Artist Selection: Identify the top 2 or 3 artists from the analyzed data. Let's refer to them as [Identified_Artist_1], [Identified_Artist_2], (and [Identified_Artist_3] if applicable).",
     "   - **Crafting a Unique Pollinations.ai Prompt (Crucial Instructions):**",
-    "       - **MUST BE DYNAMIC & CREATIVE:** For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. Do NOT use a static prompt or repeat previous prompt structures verbatim.",
+    "       - **MUST BE DYNAMIC & CREATIVE:** For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. Do NOT use a static prompt or repeat previous prompt structures verbatim, but always ask for similar as possible to the artist look",
     "       - **MUST INCLUDE ARTIST NAMES:** The prompt you generate **MUST explicitly incorporate the actual names** of [Identified_Artist_1] and [Identified_Artist_2] (and [Identified_Artist_3] if three are chosen). Replace these placeholders with the real artist names from the data.",
-    "       - **BE INVENTIVE - Combine Elements:** To create diverse and engaging visuals, combine 2-4 elements from the categories below, or invent your own variations. The goal is a fresh concept each time.",
-    "           - **Inspiration for Prompt Elements (Mix & Match):**",
-    "               - **Artistic Styles:** Photorealistic, Impressionistic, Abstract Expressionism, Surrealist, Pop Art, Cyberpunk, Steampunk, Art Nouveau, Renaissance Painting, Japanese Ukiyo-e, Bold Cartoon, Graphic Novel, Watercolor, Oil Painting, High-Detail 3D Render, Pixel Art, Glitch Art, Anime Cel Shading, Psychedelic Art.",
-    "               - **Moods/Atmospheres:** Energetic, Serene, Melancholic, Mysterious, Joyful, Epic, Whimsical, Dark & Brooding, Ethereal, Nostalgic, Futuristic, Retro-Vintage, Dreamlike, Intense, Playful.",
-    "               - **Settings/Backgrounds:** Cosmic nebula, Lush alien jungle, Abstract geometric void, Neo-futuristic cityscape, Mystical underwater kingdom, Volcanic plains of another world, Dream-like cloudscape, Grand fantastical concert stage, Intimate glowing studio, A specific historical era reimagined, A surreal dimension.",
-    "               - **Artist Actions/Interactions:** Performing an epic duet, Composing music amidst floating notes, Posing heroically as mythical figures, Merging with abstract musical energy, Interacting with symbolic objects representing their biggest hits, Levitating in a meditative state, Engaged in a creative battle of bands.",
-    "               - **Visual Motifs/Themes:** Flowing musical staves turning into rivers, Geometric soundwaves, Swirling vibrant color explosions, Beams of pure light, Nature elements (flowers, trees, constellations) intertwined with instruments, Technological implants or attire, Mythical creatures as companions, Abstract energy patterns, Iconic symbols subtly woven into their attire or surroundings.",
-    "       - **Example of the AI's Process (for your internal generation logic - DO NOT output this example verbatim):**",
-    "           1. Top artists identified: e.g., 'Dua Lipa', 'The Weeknd'.",
-    "           2. AI decides to combine: Style=Cyberpunk, Mood=Mysterious, Setting=Neo-futuristic cityscape, Action=Posing heroically.",
-    "           3. AI constructs prompt: 'Cyberpunk_showdown_Dua_Lipa_and_The_Weeknd_posing_heroically_atop_a_neo-futuristic_cityscape_skyscraper_at_night_neon_glow_rain_slicked_streets_mysterious_atmosphere_highly_detailed_cinematic_lighting_octane_render'.",
-    "           (Another example): 'Surrealist_dreamscape_of_[Identified_Artist_1]_and_[Identified_Artist_2]_floating_in_a_cosmic_nebula_playing_instruments_made_of_starlight_ethereal_mood_vibrant_colors_impressionistic_brush_strokes'.",
-    "       - **URL Encoding is Critical:** Before constructing the final URL, ensure the entire crafted prompt string (including artist names with spaces, e.g., 'Dua_Lipa' or 'Dua%20Lipa') is properly URL-encoded.",
+    "       - **BE INVENTIVE - Combine Elements:** To create diverse and engaging visuals, combine 2-4 elements from your own variations. The goal is a fresh concept each time.",
     "   - Pollinations.ai Model: Choose either 'turbo' or 'flux' for the `model` parameter. For example, `model=flux` or `model=turbo`.",
     "   - URL Construction: Generate the full image URL: `https://pollinations.ai/p/[URL_ENCODED_PROMPT]?model=[SELECTED_MODEL]`.",
     "   - Image Embedding: Embed this image using an `<img>` tag. Include a descriptive `alt` text, e.g., `alt=\"AI-generated artwork of top artists: [Identified_Artist_1], [Identified_Artist_2]\"`.",
-    "   - **Image Styling for Optimal Fit:** Apply CSS (scoped to `.ai-container`) to the `<img>` tag to ensure it is responsive and visually appealing on both mobile and desktop views. Styles should include:",
-    "       - `display: block;`",
-    "       - `max-width: 90%; /* Or a fixed max-width like 600px, but % is good for responsiveness */`",
-    "       - `height: auto;`",
-    "       - `margin: 20px auto; /* Centers the image and adds vertical spacing */`",
-    "       - `border-radius: 12px; /* Soft rounded corners */`",
-    "       - `box-shadow: 0 6px 20px rgba(0,0,0,0.15); /* Subtle depth */`",
-    "       - `object-fit: cover; /* Ensures the image covers its allocated space well, may crop slightly to fill bounds */`",
-    "       - `max-height: 45vh; /* Prevents the image from being excessively tall, especially on mobile. Adjust if needed. */`",
+    "   - **Image Styling for Optimal Fit:** Apply CSS (scoped to `.ai-container`) to the `<img>` tag to ensure it is responsive and visually appealing on both mobile and desktop views. Give Pollinations.ai credit with link",
 
     "Design & Technical Requirements - Strive for Maximum Style, Usability, and Embeddability:",
     "1. Top-Level Container: The entire HTML output you generate MUST be wrapped in a single `div` with the class `ai-container`. For example: `<div class=\"ai-container\">...all your content...</div>`.",
@@ -347,6 +328,8 @@ AI_PROMPT = [
     "Remember, the entire output must be the HTML code block itself, and nothing else."
 ]
 class TrackManager:
+
+
     def __init__(self):
         self.played_tracks = {} 
         self.lock = threading.Lock()
