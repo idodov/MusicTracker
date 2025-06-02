@@ -1,3 +1,27 @@
+"""
+This script tracks your music listening habits across your media players.
+Builds a database of your listening history.
+Generates daily charts for your top songs, artists, albums, and more.
+Provides insights into your musical tastes.
+
+#apps.yaml example:
+music_tracker:
+  module: music_tracker
+  class: MusicTracker
+  db_path: "/config/music_data_history.db"
+  duration: 30
+  min_songs_for_album: 4
+  update_time: "23:59:00"
+  media_players:
+    - media_player.patio
+    - media_player.kitchen
+    - media_player.bedroom
+    - media_player.living_room
+    - media_player.dining_room
+  html_output_path: "/homeassistant/www/music_charts.html"
+  ai_service: "google_generative_ai_conversation/generate_content"
+  run_on_startup: true
+"""
 import appdaemon.plugins.hass.hassapi as hass
 import datetime
 import sqlite3
