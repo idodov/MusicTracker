@@ -20,8 +20,10 @@ music_tracker:
     - media_player.dining_room
   html_output_path: "/homeassistant/www/music_charts.html"
   ai_service: "google_generative_ai_conversation/generate_content"
-  run_on_startup: true
+  run_on_startup: True
+  webhook: False # Set to True to enable webhook for manual updates from the html interface. If you do that you must create a webhook in Home Assistant with the name "Update_Music_Chats" inside an automation (in action section you need to active the music charts toggle)
 """
+
 import appdaemon.plugins.hass.hassapi as hass
 import datetime
 import sqlite3
@@ -35,52 +37,64 @@ import random
 
 TEMPLATE = '''
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Music Charts</title>
 <style>
-:root{color-scheme:light dark;--bg-light:#f4f4f9;--bg-dark:#1a1a1a;--text-light:#333;--text-dark:#eee;--card-light:#fff;--card-dark:#2a2a2a;--accent-light:#3498db;--accent-dark:#2980b9;--hover-light:#d0e7f9;--hover-dark:#34495e;--overview-heading:#e67e22;--stats-bg:#f9f5f0;--stats-bg-dark:#3a2e24;}
+:root{color-scheme:light dark;--bg-light:#f4f4f9;--bg-dark:#1a1a1a;--text-light:#333;--text-dark:#eee;--card-light:#fff;--card-dark:#2a2a2a;--accent-light:#3498db;--accent-dark:#2980b9;}
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Helvetica Neue',Arial,sans-serif;background:var(--bg-light);color:var(--text-light);padding:1em;transition:background .3s,color .3s;}
+body{font-family:sans-serif;background:var(--bg-light);color:var(--text-light);padding:1em;}
 body.dark-mode{background:var(--bg-dark);color:var(--text-dark);}
-#refreshPageButton,#toggleDarkMode{padding:.4em 1em;font-size:.75rem;color:#fff;background:#007bff;border:none;border-radius:5px;cursor:pointer;margin-right:.5em;transition:background .2s;}
-#refreshPageButton:hover,#toggleDarkMode:hover{background:#0056b3;}
+#refreshPageButton,#toggleDarkMode,#toggleUpdates{padding:.4em 1em;font-size:.75rem;color:#fff;background:#007bff;border:none;border-radius:5px;cursor:pointer;margin-right:.5em;}
+#toggleUpdates:disabled{background:#6c757d;cursor:not-allowed;}
 header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:1em;}
 h1{font-size:1.6rem;color:var(--accent-light);}
 body.dark-mode h1{color:var(--accent-dark);}
-#controls label{margin-right:1em;font-size:.9rem;color:#34495e;}
+#controls label{margin-right:1em;font-size:.9rem;color:#34495e;cursor:pointer;}
 body.dark-mode #controls label{color:#ccc;}
 #generated-at{font-size:.8rem;color:#7f8c8d;}
 main{display:flex;flex-direction:column;gap:2em;}
-.chart-section{background:var(--card-light);border-radius:8px;padding:1em;box-shadow:0 2px 4px rgba(0,0,0,.1);}
-body.dark-mode .chart-section{background:var(--card-dark);box-shadow:0 2px 8px rgba(0,0,0,.3);}
-.chart-section h2{color:var(--accent-light);margin-bottom:.5em;}
+.chart-section{background:var(--card-light);border-radius:8px;padding:1em;}
+body.dark-mode .chart-section{background:var(--card-dark);}
+.chart-section h2{color:var(--accent-light);}
 body.dark-mode .chart-section h2{color:var(--accent-dark);}
 .chart-tables{display:flex;flex-wrap:wrap;gap:1em;}
 .table-container{flex:1 1 calc(33.33% - 1em);min-width:280px;}
 table{width:100%;border-collapse:collapse;margin-bottom:.5em;}
 th,td{padding:.5em;text-align:start;word-break:break-word;font-size:.8rem;}
-th{background:var(--accent-light);color:#fff;position:sticky;top:0;z-index:1;}
+th{background:var(--accent-light);color:#fff;}
 tbody tr:nth-child(even){background:#ecf0f1;}
 body.dark-mode tbody tr:nth-child(even){background:#3a3a3a;}
 tbody tr:hover{background:var(--hover-light);}
 body.dark-mode tbody tr:hover{background:var(--hover-dark);}
 h3{margin:.5em 0;font-size:1rem;color:#2980b9;}
 .ai-container .chart-container{max-height:90vh;}
-@media (max-width:768px){.table-container{flex:1 1 100%;}header{flex-direction:column;align-items:flex-start;}#controls{margin:.5em 0;}}
-#ai-analysis h2{color:#856404;}
 .change-up{color:green;font-weight:bold;}
 .change-down{color:red;font-weight:bold;}
 .change-new{color:orange;font-weight:bold;}
-.stats-container{background:var(--stats-bg);border-radius:8px;padding:.5em;}
-body.dark-mode .stats-container{background:var(--stats-bg-dark);}
-.stats-container h3{color:var(--overview-heading);font-size:1rem;margin-bottom:.3em;}
-.stats-container table th{background:var(--overview-heading);color:#fff;}
+.stats-container{background:#f9f5f0;border-radius:8px;padding:.5em;}
+body.dark-mode .stats-container{background:#3a2e24;}
+.stats-container h3{color:#e67e22;font-size:1rem;margin-bottom:.3em;}
+.stats-container table th{background:#e67e22;color:#fff;}
+#update-status-area p{margin-bottom:.5em;font-size:1.1em;}
+#countdown-refresh-button{padding:.5em 1.2em;font-size:1rem;color:#fff;background:#007bff;border:none;border-radius:5px;cursor:pointer;}
+#countdown-refresh-button:disabled{background:#6c757d;cursor:not-allowed;}
+#countdown-refresh-button:hover:not(:disabled){background:#0056b3;}
+#ai-analysis h2{color:#856404;}
+@media (max-width:768px){
+.table-container{flex:1 1 100%;}
+header{flex-direction:column;align-items:flex-start;}
+header>*:not(:last-child){margin-bottom:1em;}
+#controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin:0;}
+#controls label{padding:.7em .5em;margin:0;background:rgba(0,0,0,.04);border-radius:6px;text-align:center;}
+body.dark-mode #controls label{background:rgba(255,255,255,.1);}
+#controls label:hover{background:rgba(0,0,0,.1);}
+body.dark-mode #controls label:hover{background:rgba(255,255,255,.2);}
+#action-buttons{display:grid;width:100%;grid-template-columns:1fr 1fr;gap:10px;}
+#action-buttons button{margin:0;width:100%;}
+}
 </style>
 </head>
 <body>
@@ -93,7 +107,7 @@ body.dark-mode .stats-container{background:var(--stats-bg-dark);}
 <label><input type="checkbox" data-period="yearly" checked> Yearly</label>
 </div>
 <p id="generated-at">Generated at {{ generated_at }}{% if ai_analysis %}<br/><a href="#ai-analysis" id="ai-indicator" style="color: light-blue">AI Report Available</a>{% endif %}</p>
-<div><button id="refreshPageButton">Refresh Page</button><button id="toggleDarkMode">Toggle Dark Mode</button></div>
+<div id="action-buttons">{% if webhook %}<button id="toggleUpdates" onclick="triggerWebhook()">Update Charts</button>{% endif %}<button id="refreshPageButton">Refresh Page</button><button id="toggleDarkMode">Toggle Dark Mode</button></div>
 </header>
 <main>
 {% macro render_table(title, items, cols, current_period) %}
@@ -104,7 +118,7 @@ body.dark-mode .stats-container{background:var(--stats-bg-dark);}
 <tr><th>{% for col in cols.keys() %}<th>{{ col }}</th>{% endfor %}{% if current_period != 'yearly' and title != '📻 Channels/Playlists' %}<th>~</th>{% endif %}</tr>
 </thead>
 <tbody>{% for item in items %}
-<tr><td nowrap>{{ loop.index }}</td>{% for key in cols.values() %}{% if key == 'plays' or key == 'change' %}<td nowrap>{{ item[key] }}</td>{% else %}<td>{{ item[key] }}</td>{% endif %}{% endfor %}{% if current_period != 'yearly' and title != '📻 Channels/Playlists' %}<td nowrap>{% if item.new_entry %}<span class="change-new">NEW</span>{% elif item.change > 0 %}<span class="change-up">▲{{ item.change }}</span>{% elif item.change < 0 %}<span class="change-down">▼{{ (-item.change)|abs }}</span>{% else %}–{% endif %}</td>{% endif %}</tr>{% endfor %}
+<tr><td nowrap>{{ loop.index }}</td>{% for key in cols.values() %}<td{% if key in ['plays','change'] %} nowrap{% endif %}>{{ item[key] }}</td>{% endfor %}{% if current_period != 'yearly' and title != '📻 Channels/Playlists' %}<td nowrap>{% if item.new_entry %}<span class="change-new">NEW</span>{% elif item.change > 0 %}<span class="change-up">▲{{ item.change }}</span>{% elif item.change < 0 %}<span class="change-down">▼{{ (-item.change)|abs }}</span>{% else %}–{% endif %}</td>{% endif %}</tr>{% endfor %}
 </tbody>
 </table>{% else %}<p>No data for {{ title }}</p>{% endif %}</div>
 {% endmacro %}
@@ -133,6 +147,7 @@ body.dark-mode .stats-container{background:var(--stats-bg-dark);}
 </div></div></section>
 {% endfor %}
 {% if ai_analysis %}
+<div id="update-status-area" style="padding:1em;text-align:center;"></div>
 <section id="ai-analysis">
 <h2>🔮 AI Analysis</h2>
 {{ ai_analysis|safe }}
@@ -143,23 +158,37 @@ body.dark-mode .stats-container{background:var(--stats-bg-dark);}
 (function(){
 let d=localStorage.getItem('dark_mode'),p=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
 if(d==='1'||(d===null&&p))document.body.classList.add('dark-mode');
-
+})();
 document.addEventListener("DOMContentLoaded",function(){
 let r=document.getElementById('refreshPageButton'),t=document.getElementById('toggleDarkMode');
 if(r)r.onclick=function(){location.reload();};
 if(t)t.onclick=function(){let n=document.body.classList.toggle('dark-mode');localStorage.setItem('dark_mode',n?'1':'0');};
-
 document.querySelectorAll("#controls input[type=checkbox]").forEach(function(cb){
 let per=cb.dataset.period,s=localStorage.getItem('show_'+per),sec=document.getElementById('chart-'+per);
 cb.checked=s===null?true:s==="1";
 if(sec)sec.style.display=cb.checked?"":"none";
-cb.onchange=function(){localStorage.setItem('show_'+per,cb.checked?"1":"0");if(sec)sec.style.display=cb.checked?"":"none";};});});})();
+cb.onchange=function(){localStorage.setItem('show_'+per,cb.checked?"1":"0");if(sec)sec.style.display=cb.checked?"":"none";};
+});
+});
+function triggerWebhook() {
+const originalUpdateButton=document.getElementById('toggleUpdates');
+if(!originalUpdateButton||originalUpdateButton.style.display==='none'){return;}
+originalUpdateButton.style.display='none';
+const statusArea=document.getElementById('update-status-area');
+statusArea.innerHTML=`<p>Update request sent! Please wait while new AI report is generated.</p><button id="countdown-refresh-button" disabled>Refresh in <span id="countdown-timer">30</span>s</button>`;
+fetch("/api/webhook/Update_Music_Chats",{method:"POST"}).then(r=>{if(r.ok){console.log("Webhook triggered!");}else{console.error("Failed:",r.statusText);}}).catch(e=>console.error("Error:",e));
+let countdown=30,timerSpan=document.getElementById('countdown-timer'),newRefreshButton=document.getElementById('countdown-refresh-button');
+const intervalId=setInterval(()=>{
+countdown--;timerSpan.innerText=countdown;
+if(countdown<=0){clearInterval(intervalId);newRefreshButton.disabled=false;newRefreshButton.innerText='✅ Refresh Now';newRefreshButton.onclick=()=>location.reload();}
+},1000);
+}
 </script>
 </body>
 </html>
 '''
 
-AI_PROMPT = [
+AI_PROMPT_1 = [
     "You are a 'Musical Insights Web Weaver,' an AI expert tasked with creating a beautiful, responsive, and insightful HTML widget from music listening data.",
     "This widget must be self-contained and embeddable, providing an excellent user experience on both mobile and desktop. Prioritize modern, visually stunning, and engaging design.",
     "Begin the HTML output with a prominent main title displaying `Your Musical Insights for [Analyzed Time Period]`, with the period inferred from the provided listening data.",
@@ -170,7 +199,7 @@ AI_PROMPT = [
     "   - Highlight connections between artists/genres, and provide overarching themes or summaries of my musical journey.",
     "   - Frame all analysis with positive and encouraging language, celebrating my unique musical journey and preferences.",
     "2. Recommendations: Suggest 3-5 new artists/songs based on habits, including fun, engaging trivia for each.",
-    "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game (e.g., trivia, guess the artist/lyric, matching) related to music preferences/recommendations. Use buttons/clickable elements; NO typing required.",
+    "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game related to music preferences and recommendations (e.g., trivia on artists, lyrics, play counts, chart positions, etc.). The game should use buttons and other clickable elements—no typing required.",
     "4. Dynamic AI Artist Visualization (Mandatory):",
     "   - Image: Generate a single, visually striking image featuring 1-2 of the user's top artists. This is the ONLY image allowed in the HTML output.",
     "   - Artist Selection: Identify the single top artist from the analyzed data. Let's refer to them as [Identified_Artist_1].",
@@ -186,7 +215,50 @@ AI_PROMPT = [
     "   - Visuals: Achieve a modern, clean, polished, and unique aesthetic. Develop a harmonious color palette. Use clear, modern web-safe (or Google) fonts. Use ample whitespace. `ai-container` should be `width: 100%`.",
     "   - Image Constraint: Beyond the AI artist image, NO other static images/icons (unless icon font) or complex background images are allowed.",
     "3. Data Visualization:",
-    "   - Use Chart.js (via CDN, embed JS) for charts. Top genres: Pie/Doughnut. Top artists: Bar chart. Style charts to integrate seamlessly.",
+    "   - Use Chart.js (via CDN, embedded JS) to create a seamless and visually appealing set of charts, such as a Pie/Doughnut chart for top genres, a Bar chart for top artists, and a Line chart for daily listening trends, while allowing creative freedom in generating additional graphs beyond these examples.",
+    "   - Avoid generic 'Others' categories; display distinct top entries.",
+    "   - Fallback: Pure CSS charts (scoped) if Chart.js is too complex.",
+    "4. Responsiveness (Mobile & Desktop):",
+    "   - Primary content should largely fit within ~85vh viewport height on load.",
+    "   - Use CSS Flexbox or Grid for layout.",
+    "   - Mobile (<768px): Content blocks (charts, AI image, text, game) MUST stack vertically.",
+    "   - Desktop (>=768px): Arrange related sub-containers side-by-side.",
+    "   - Apply sensible `max-height` to visuals (e.g., AI image ~45vh, charts 300-400px).",
+    "   - NO horizontal scrolling.",
+    "5. Structure: Organize content logically into: 'Musical Analysis' (including AI image), 'Artist & Song Recommendations', and 'Interactive Game'. All JavaScript (Chart.js, game logic) must be embedded and operate within `.ai-container`."
+]
+
+
+AI_PROMPT_2 = [
+    "You are a 'Musical Insights Web Weaver,' an AI expert tasked with creating a beautiful, responsive, and insightful HTML widget from music listening data.",
+    "This widget must be self-contained and embeddable, providing an excellent user experience on both mobile and desktop. Prioritize modern, visually stunning, and engaging design.",
+    "Begin the HTML output with a prominent main title displaying `Your Musical Insights for [Analyzed Time Period]`, with the period inferred from the provided listening data.",
+
+    "Core Content & Analysis:",
+    "1. Musical Preferences Analysis: Deeply analyze provided data to reveal top genres, artists, predominant moods (if inferable), and notable listening patterns/shifts. Frame all insights positively.",
+    "   - Identifying notable listening patterns, such as periods of specific genre focus, discovery phases, consistent repeat listening, or any surprising findings or evolution in taste.",
+    "   - Highlight connections between artists/genres, and provide overarching themes or summaries of my musical journey.",
+    "   - Frame all analysis with positive and encouraging language, celebrating my unique musical journey and preferences.",
+    "   - Temporal Listening Analysis: Based on the timestamps, analyze my listening habits throughout the day. Identify peak listening hours (e.g., mornings, late nights), compare weekday vs. weekend patterns, and try to find connections between the time of day and the type of music I listen to (e.g., 'energetic music in the mornings, calmer tracks at night').",
+    "   - Musical Taste Patterns: Identify periods of specific genre focus, discovery phases, consistent repeat listening, or any surprising findings or evolution in my taste.",
+    "2. Recommendations: Suggest 3-5 new artists/songs based on habits, including fun, engaging trivia for each.",
+    "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game related to music preferences and recommendations (e.g., trivia on artists, lyrics, play counts, chart positions, etc.). The game should use buttons and other clickable elements—no typing required.",
+    "4. Dynamic AI Artist Visualization (Mandatory):",
+    "   - Image: Generate a single, visually striking image featuring 1-2 of the user's top artists. This is the ONLY image allowed in the HTML output.",
+    "   - Artist Selection: Identify the single top artist from the analyzed data. Let's refer to them as [Identified_Artist_1].",
+    "   - Pollinations.ai Prompt (Crucial Instructions): For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. The prompt MUST explicitly incorporate the actual name of [Identified_Artist_1] AND strongly aim to replicate the artist's actual physical likeness and recognizable features as closely as possible. The goal is an image that is as similar as possible to the artist's look. Combine 2-4 diverse elements from your own variations (e.g., style, setting, mood, activity) to create fresh concepts each time. If you choose to create a banner-style image (e.g., a wide aspect ratio like 16:9 or 21:9), you MAY add `&width=[VALUE]&height=[VALUE]` parameters to the URL (e.g., `&width=1200&height=400`). You decide if a banner aspect ratio is most visually appealing for the chosen artist.",
+    "   - Model: Use `model=turbo` or `flux`.",
+    "   - URL: `https://pollinations.ai/p/[URL_ENCODED_PROMPT]?model=[SELECTED_MODEL]`",
+    "   - Embedding: Embed using `<img>` with descriptive `alt` text. Style `<img>` (scoped to `.ai-container`) for responsiveness. Credit Pollinations.ai with a link.",
+    "Design & Technical Requirements:",
+    "1. Output Format: Generate ONLY pure HTML code. The entire output MUST be wrapped in a single `<div class=\"ai-container\">` and contain NO `<html>`, `<head>`, `<body>` tags, markdown, or conversational text.",
+    "2. CSS Styling:",
+    "   - Embed ALL CSS within `<style>` tags directly inside `ai-container` (e.g., at the beginning).",
+    "   - Scoping: ALL CSS rules MUST be prefixed with `.ai-container` to avoid host page interference. Avoid global selectors (`*`, `body`, `html`) unless scoped.",
+    "   - Visuals: Achieve a modern, clean, polished, and unique aesthetic. Develop a harmonious color palette. Use clear, modern web-safe (or Google) fonts. Use ample whitespace. `ai-container` should be `width: 100%`.",
+    "   - Image Constraint: Beyond the AI artist image, NO other static images/icons (unless icon font) or complex background images are allowed.",
+    "3. Data Visualization:",
+    "   - Use Chart.js (via CDN, embedded JS) to create a seamless and visually appealing set of charts, such as a Pie/Doughnut chart for top genres, a Bar chart for top artists, and a Line chart for daily listening trends, while allowing creative freedom in generating additional graphs beyond these examples.",
     "   - Avoid generic 'Others' categories; display distinct top entries.",
     "   - Fallback: Pure CSS charts (scoped) if Chart.js is too complex.",
     "4. Responsiveness (Mobile & Desktop):",
@@ -255,6 +327,7 @@ class MusicTracker(hass.Hass):
         self.db_path = self.args.get("db_path", "/config/music_data_history.db")
         self.html_output_path = self.args.get("html_output_path", "/homeassistant/www/music_charts.html")
         self.ai_service = self.args.get("ai_service", False)
+        self.webhook = self.args.get("webhook", False)
 
         if not self.db_path:
             self.log("db_path not configured. MusicTracker cannot function.", level="ERROR")
@@ -377,8 +450,17 @@ class MusicTracker(hass.Hass):
 
         # 4. Optionally call AI service for analysis
         if self.ai_service:
-            self.log("AI service configured. Initiating AI analysis.")
-            self._call_ai_analysis(current_charts_data)
+            analysis_options = ["charts", "recent_songs"]
+            chosen_method = random.choice(analysis_options)
+            self.log(f"Randomly selected AI analysis method: '{chosen_method}'")
+
+            # Execute the chosen method
+            if chosen_method == "charts":
+                self.log("Using aggregated chart data for AI prompt.")
+                self._call_ai_analysis(current_charts_data)
+            else: 
+                self.log("Using recent unique songs list for AI prompt.")
+                self._call_ai_analysis_with_recent_songs()
         else:
             self.log("AI service not configured. Skipping AI analysis.")
 
@@ -399,7 +481,7 @@ class MusicTracker(hass.Hass):
 
         domain, service = parts
         prompt = self.build_prompt_from_chart_data(charts_data_for_ai)
-
+        
         self.log(f"Calling AI service: {domain}/{service}")
         try:
             self.call_service(
@@ -412,6 +494,49 @@ class MusicTracker(hass.Hass):
             self.log(f"Error initiating AI service call {domain}/{service}: {e}", level="ERROR")
             # Re-render HTML including error message
             self.render_and_write_html(self._last_charts_data, f"Error initiating AI analysis: {e}", self._last_overview_stats_per_period)
+
+    def _call_ai_analysis_with_recent_songs(self):
+        """
+        Gets recent songs, builds a prompt, and calls the AI.
+        """
+        if not self.ai_service:
+            self.log("AI service not configured. Skipping analysis.", level="DEBUG")
+            return
+
+        # 1. Get the new data
+        self.log("Fetching last 100 songs for AI analysis.")
+        #last_100_songs = self.get_last_n_songs_with_timestamps(100)
+        last_100_songs = self.get_last_n_unique_songs_with_timestamps(100)
+        
+        if not last_100_songs:
+            self.log("No recent songs found to send to AI. Aborting.", level="WARNING")
+            # Optionally re-render HTML with a message
+            self.render_and_write_html(self._last_charts_data, "Could not generate AI analysis: no recent listening data found.", self._last_overview_stats_per_period)
+            return
+
+        # 2. Build the prompt with the new function
+        self.log("Building AI prompt from recent songs list.")
+        prompt = self.build_ai_prompt_from_recent_songs(last_100_songs)
+
+        # 3. Call the AI service (this part remains the same)
+        parts = self.ai_service.split("/", 1)
+        if len(parts) != 2:
+            self.log(f"Invalid ai_service format: '{self.ai_service}'. Skipping.", level="WARNING")
+            return
+
+        domain, service = parts
+        self.log(f"Calling AI service: {domain}/{service} with new prompt.")
+        try:
+            self.call_service(
+                f"{domain}/{service}", prompt=prompt,
+                timeout=120, hass_timeout=120,
+                callback=self._ai_response_callback
+            )
+        except Exception as e:
+            self.log(f"Error initiating AI service call {domain}/{service}: {e}", level="ERROR")
+            # Handle error by re-rendering HTML
+            self.render_and_write_html(self._last_charts_data, f"Error initiating AI analysis: {e}", self._last_overview_stats_per_period)
+
 
     def _ai_response_callback(self, resp):
         """
@@ -464,7 +589,8 @@ class MusicTracker(hass.Hass):
                 generated_at=datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 charts=charts_data_to_render,
                 overview=overview_stats_per_period,
-                ai_analysis=ai_text_content
+                ai_analysis=ai_text_content,
+                webhook=self.webhook
             )
         except Exception as e:
             self.log(f"Jinja2 template rendering error: {e}", level="ERROR")
@@ -481,7 +607,7 @@ class MusicTracker(hass.Hass):
         """
         Builds a prompt string for the AI service based on chart data.
         """
-        prompt_lines = list(AI_PROMPT)
+        prompt_lines = list(AI_PROMPT_1)
         potential_rates = ["daily", "weekly", "monthly", "yearly"]
 
         available_rate_keys = [
@@ -519,6 +645,62 @@ class MusicTracker(hass.Hass):
                 prompt_lines.append(f"| {artist} | {title} | {plays} |")
         else:
             prompt_lines.append(f"| No {display_name_for_rate.lower()} song data available for this period. | | |")
+
+        return "\n".join(prompt_lines)
+
+    def build_ai_prompt_from_recent_songs(self, recent_songs_data):
+        """
+        Builds a detailed prompt for the AI service based on the last 100 songs played.
+
+        This function replaces the chart-based prompt builder. It provides a chronological
+        list of recently played songs, giving the AI a direct view of listening habits.
+
+        Args:
+            recent_songs_data (list): A list of song dictionaries from
+                                    get_last_n_songs_with_timestamps().
+                                    Each dict should have 'artist', 'title', 'timestamp'.
+
+        Returns:
+            str: A formatted string to be used as a prompt for the AI service.
+        """
+        # Start with the base instructions for the AI
+        prompt_lines = list(AI_PROMPT_2)
+
+        if not recent_songs_data:
+            self.log("No recent songs data provided to build AI prompt.", level="WARNING")
+            # Add a fallback message to the prompt
+            prompt_lines.append("\nMy listening data is not available at this moment.")
+            return "\n".join(prompt_lines)
+
+        # Describe the data context for the AI
+        first_song_ts_str = recent_songs_data[0]['timestamp']
+        last_song_ts_str = recent_songs_data[-1]['timestamp']
+
+        # Format timestamps for a more readable date range
+        try:
+            first_date = datetime.datetime.strptime(first_song_ts_str, '%Y-%m-%d %H:%M:%S').strftime('%B %d, %Y')
+            last_date = datetime.datetime.strptime(last_song_ts_str, '%Y-%m-%d %H:%M:%S').strftime('%B %d, %Y')
+            date_range_info = f"This data covers my listening from approximately {last_date} to {first_date}."
+        except (ValueError, IndexError):
+            date_range_info = "Here is my most recent listening history."
+
+        prompt_lines.extend([
+            f"\nAnalyze my most recent listening history. {date_range_info}",
+            "Below is a list of the last 100 unique songs I've played, with the most recent ones listed first.",
+            "\nMy Most Recent Songs (newest first):",
+            "| Artist | Title | Played At (Timestamp) |",
+            "|---|---|---|"
+        ])
+
+        # Add each song to the prompt in a markdown table format
+        for song in recent_songs_data:
+            artist = song.get('artist', 'N/A')
+            title = song.get('title', 'N/A')
+            timestamp = song.get('timestamp', 'N/A')
+            # Sanitize pipe characters to not break the markdown table
+            artist = artist.replace('|', '-')
+            title = title.replace('|', '-')
+            prompt_lines.append(f"| {artist} | {title} | {timestamp} |")
 
         return "\n".join(prompt_lines)
 
@@ -1075,3 +1257,99 @@ class MusicTracker(hass.Hass):
                 "unique_albums": 0,
                 "unique_artists": 0
             }
+
+    def get_last_n_songs_with_timestamps(self, n=100):
+        """
+        Retrieves the last N songs played from the database, along with their timestamps.
+
+        Args:
+            n (int): The number of most recent songs to retrieve. Defaults to 100.
+
+        Returns:
+            list: A list of dictionaries, where each dictionary represents a song
+                and contains 'artist', 'title', and 'timestamp'.
+                Returns an empty list if there's a DB error or no data.
+        """
+        if not self.db_path:
+            self.log("Database path is not configured. Cannot retrieve songs.", level="ERROR")
+            return []
+
+        songs_list = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                query = f"""
+                    SELECT artist, title, timestamp
+                    FROM music_history
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """
+                cursor.execute(query, (n,))
+                results = cursor.fetchall()
+
+                for row in results:
+                    songs_list.append({
+                        "artist": row[0],
+                        "title": row[1],
+                        "timestamp": row[2]  # timestamp is already a string in 'YYYY-MM-DD HH:MM:SS' format
+                    })
+            self.log(f"Successfully retrieved {len(songs_list)} last songs from the database.")
+        except sqlite3.Error as e:
+            self.log(f"DB error retrieving last {n} songs: {e}", level="ERROR")
+        except Exception as e:
+            self.log(f"An unexpected error occurred while retrieving last {n} songs: {e}", level="ERROR")
+        return songs_list
+
+    def get_last_n_unique_songs_with_timestamps(self, n=100):
+        """
+        Retrieves the last N unique songs played from the database, ensuring no
+        duplicate songs are in the list. It returns each unique song with its
+        most recent play timestamp.
+
+        Args:
+            n (int): The number of unique recent songs to retrieve. Defaults to 100.
+
+        Returns:
+            list: A list of dictionaries, where each dictionary represents a unique song
+                and contains 'artist', 'title', and the 'timestamp' of its last play.
+                Returns an empty list if there's a DB error or no data.
+        """
+        if not self.db_path:
+            self.log("Database path is not configured. Cannot retrieve songs.", level="ERROR")
+            return []
+
+        songs_list = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                # This query groups by song (artist and title) and finds the most
+                # recent timestamp for each one. It then orders them by that
+                # recent timestamp to get the last N unique songs played.
+                query = f"""
+                    SELECT
+                        artist,
+                        title,
+                        MAX(timestamp) as last_played_ts
+                    FROM
+                        music_history
+                    GROUP BY
+                        artist, title
+                    ORDER BY
+                        last_played_ts DESC
+                    LIMIT ?
+                """
+                cursor.execute(query, (n,))
+                results = cursor.fetchall()
+
+                for row in results:
+                    songs_list.append({
+                        "artist": row[0],
+                        "title": row[1],
+                        "timestamp": row[2] # This is the most recent timestamp for this unique song
+                    })
+            self.log(f"Successfully retrieved {len(songs_list)} last unique songs from the database.")
+        except sqlite3.Error as e:
+            self.log(f"DB error retrieving last {n} unique songs: {e}", level="ERROR")
+        except Exception as e:
+            self.log(f"An unexpected error occurred while retrieving last {n} unique songs: {e}", level="ERROR")
+        return songs_list
