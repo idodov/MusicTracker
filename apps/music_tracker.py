@@ -21,7 +21,7 @@ music_tracker:
   html_output_path: "/homeassistant/www/music_charts.html"
   ai_service: "google_generative_ai_conversation/generate_content"
   run_on_startup: True
-  webhook: False # Set to True to enable webhook for manual updates from the html interface. If you do that you must create a webhook in Home Assistant with the name "Update_Music_Chats" inside an automation (in action section you need to active the music charts toggle)
+  webhook: False # Set to True to enable webhook for manual updates from the html interface. If you do that you must create a webhook in Home Assistant with the name "Update_Music_Charts" inside an automation (in action section you need to active the music charts toggle)
 """
 
 import appdaemon.plugins.hass.hassapi as hass
@@ -176,7 +176,7 @@ if(!originalUpdateButton||originalUpdateButton.style.display==='none'){return;}
 originalUpdateButton.style.display='none';
 const statusArea=document.getElementById('update-status-area');
 statusArea.innerHTML=`<p>Update request sent! Please wait while new AI report is generated.</p><button id="countdown-refresh-button" disabled>Refresh in <span id="countdown-timer">30</span>s</button>`;
-fetch("/api/webhook/Update_Music_Chats",{method:"POST"}).then(r=>{if(r.ok){console.log("Webhook triggered!");}else{console.error("Failed:",r.statusText);}}).catch(e=>console.error("Error:",e));
+fetch("/api/webhook/Update_Music_Charts",{method:"POST"}).then(r=>{if(r.ok){console.log("Webhook triggered!");}else{console.error("Failed:",r.statusText);}}).catch(e=>console.error("Error:",e));
 let countdown=30,timerSpan=document.getElementById('countdown-timer'),newRefreshButton=document.getElementById('countdown-refresh-button');
 const intervalId=setInterval(()=>{
 countdown--;timerSpan.innerText=countdown;
