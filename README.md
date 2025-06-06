@@ -118,7 +118,7 @@ This automation will listen for the webhook from the button and flip the toggle 
 
 4.  **Configure the Trigger:**
     - In the **Triggers** section, click **Add Trigger** and select **Webhook**.
-    - For the **Webhook ID**, enter `Update_Music_Chats`. **This must match exactly.**
+    - For the **Webhook ID**, enter `Update_Music_Charts`. **This must match exactly.**
 
 5.  **Configure the Action:**
     - In the **Actions** section, click **Add Action**.
@@ -151,7 +151,7 @@ Once the script runs for the first time, you can access your charts page at:
 
 -   **"Update Charts" button doesn't work:**
     - Make sure `webhook: True` is set in your `apps.yaml`.
-    - Double-check that your Home Assistant automation's Webhook ID is **exactly** `Update_Music_Chats`.
+    - Double-check that your Home Assistant automation's Webhook ID is **exactly** `Update_Music_Charts`.
     - Open your browser's developer tools (F12) on the charts page, go to the Console tab, click the button, and see if any errors appear.
 
 -   **AI Analysis is not appearing:**
