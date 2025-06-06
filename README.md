@@ -30,7 +30,7 @@ This isn't just a tracker; it's your personal music historian, complete with an 
 ### Prerequisites
 
 1.  **Home Assistant:** You must have a working Home Assistant installation.
-2.  **AppDaemon Add-on:** You need the [AppDaemon 4](https://github.com/hassio-addons/addon-appdaemon) add-on installed and running.
+2.  **AppDaemon Add-on:** You need the [AppDaemon 4.5+](https://github.com/hassio-addons/addon-appdaemon) add-on installed and running.
 3.  **(Optional) Generative AI Integration:** To use the AI analysis feature, you need a working Generative AI integration configured in Home Assistant, such as [Google Generative AI Conversation](https://www.home-assistant.io/integrations/google_generative_ai_conversation/).
 
 ### Step 1: Add the Script
