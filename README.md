@@ -42,7 +42,7 @@ This isn't just a tracker; it's your personal music historian, complete with an 
 
 ### Step 2: Configure the App
 
-1.  In the `apps` directory, open your `apps.yaml` file (if it doesn't exist, create it).
+1.  In the `apps` directory, open your `apps.yaml` file.
 2.  Add the following configuration block to the file, and customize it to your needs.
 
 ```yaml
@@ -84,6 +84,16 @@ music_tracker:
   
   # How many unique songs from an album must be played for it to appear in the charts.
   min_songs_for_album: 4
+```
+3. In `configuration.yaml` file you need to make sure Home Assistant allows external urls and dirs, for example:
+```yaml
+homeassistant:
+  allowlist_external_urls:
+    - http://192.168.86.220:8123
+    - http://homeassistant.local:8123
+
+  allowlist_external_dirs:
+    - "/config/www"
 ```
 
 ### Step 3: (Required if `webhook: True`) Webhook Setup
