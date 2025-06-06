@@ -35,10 +35,9 @@ This isn't just a tracker; it's your personal music historian, complete with an 
 
 ### Step 1: Add the Script
 
-1.  Navigate to your AppDaemon configuration folder (usually `/config/appdaemon/`).
-2.  Inside this folder, create a new directory named `apps` if it doesn't already exist.
-3.  Create a new file inside the `apps` folder named `music_tracker.py`.
-4.  Copy the entire content of the `music_tracker.py` script and paste it into this new file.
+1.  Navigate to your AppDaemon configuration folder (usually `/config/appdaemon/apps`).
+2.  Create a new file inside the `apps` folder named `music_tracker.py`.
+3.  Copy the entire content of the `music_tracker.py` script and paste it into this new file.
 
 ### Step 2: Configure the App
 
@@ -95,6 +94,7 @@ homeassistant:
   allowlist_external_dirs:
     - "/config/www"
 ```
+4. Restart Home Assistant (if you modify configuration.yaml file)
 
 ### Step 3: (Required if `webhook: True`) Webhook Setup
 
@@ -138,7 +138,7 @@ Once the script runs for the first time, you can access your charts page at:
 `http://<your-home-assistant-ip>:8123/local/music_charts.html`
 
 -   Replace `<your-home-assistant-ip>` with the IP address of your Home Assistant instance.
--   Bookmark this page! It's your new personal music dashboard.
+-   Bookmark this page or add it as a `webpage` card to your dashboard. It's recomended to use `Pannel (single card)` dashboard for best results.
 
 ---
 
