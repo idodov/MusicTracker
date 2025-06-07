@@ -423,27 +423,61 @@ class MusicTracker(hass.Hass):
         self.log("MusicTracker Initialization Complete.")
 
     def scheduled_update_html_callback(self, kwargs):
-        """
-        Called daily at the configured time to regenerate charts and HTML.
-        """
+        """Called daily at the configured time to regenerate charts and HTML."""
         self.log("Scheduled daily chart update triggered.")
         self.update_html_and_sensors()
 
     def manual_update_html_callback(self, entity, attribute, old, new, kwargs):
-        """
-        Called when the input_boolean for manual update is turned on.
-        """
+        """Called when the input_boolean for manual update is turned on."""
         self.log(f"Manual chart update triggered by {entity}.")
         self.update_html_and_sensors()
         if self.entity_exists(self.input_boolean_chart_trigger):
             self.set_state(self.input_boolean_chart_trigger, state="off",
                         attributes={"last_triggered": datetime.datetime.now().isoformat()})
 
+    def _run_skipped_song_cleanup(self):
+        """
+        Connects to the DB and runs a quick cleanup of skipped tracks.
+        This is designed to be run right before chart generation for accuracy.
+        """
+        if not os.path.exists(self.db_path):
+            return
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                query = "SELECT id, timestamp, LAG(timestamp, 1) OVER (ORDER BY timestamp) AS prev_timestamp FROM music_history"
+                cursor.execute(query)
+                
+                ids_to_delete = []
+                for track in cursor.fetchall():
+                    if track["prev_timestamp"] is None: continue
+                    
+                    current_ts = datetime.datetime.fromisoformat(track["timestamp"])
+                    prev_ts = datetime.datetime.fromisoformat(track["prev_timestamp"])
+                    time_diff = (current_ts - prev_ts).total_seconds()
+                    
+                    if 0 <= time_diff < self.cleanup_threshold_seconds:
+                        ids_to_delete.append((track["id"],))
+
+                if ids_to_delete:
+                    cursor.executemany("DELETE FROM music_history WHERE id = ?;", ids_to_delete)
+                    conn.commit()
+                    self.log(f"Pre-chart cleanup: Removed {len(ids_to_delete)} skipped tracks for accuracy.")
+
+        except sqlite3.Error as e:
+            self.log(f"Error during pre-chart cleanup of skipped tracks: {e}", level="WARNING")
+
     def update_html_and_sensors(self):
         """
         Main routine: gather data for each period, compute overview stats,
         render HTML, and optionally call AI service.
         """
+        # --- CRITICAL: Clean up skipped songs BEFORE generating charts ---
+        self._run_skipped_song_cleanup()
+        
         self.log("Starting chart data generation and HTML/Sensor update process...")
         timeframes = {
             "daily":   "1 day",
@@ -499,9 +533,7 @@ class MusicTracker(hass.Hass):
         self.log("HTML update process finished.")
 
     def _call_ai_analysis(self, charts_data_for_ai):
-        """
-        Sends chart data to the configured AI service for analysis and waits for callback.
-        """
+        """Sends chart data to the configured AI service for analysis and waits for callback."""
         if not isinstance(self.ai_service, str): return
         domain, service = self.ai_service.split("/", 1)
         prompt = self.build_prompt_from_chart_data(charts_data_for_ai)
@@ -513,9 +545,7 @@ class MusicTracker(hass.Hass):
             self.render_and_write_html(self._last_charts_data, f"Error initiating AI analysis: {e}", self._last_overview_stats_per_period)
 
     def _call_ai_analysis_with_recent_songs(self):
-        """
-        Gets recent songs, builds a prompt, and calls the AI.
-        """
+        """Gets recent songs, builds a prompt, and calls the AI."""
         if not self.ai_service: return
         last_100_songs = self.get_last_n_unique_songs_with_timestamps(100)
         
@@ -534,9 +564,7 @@ class MusicTracker(hass.Hass):
 
 
     def _ai_response_callback(self, resp):
-        """
-        Callback after AI service returns. Extracts AI text and re-renders HTML including it.
-        """
+        """Callback after AI service returns. Extracts AI text and re-renders HTML including it."""
         ai_text = None
         if isinstance(resp, dict):
             if resp.get("success"):
@@ -559,9 +587,7 @@ class MusicTracker(hass.Hass):
             self.log("Cannot re-render HTML with AI: _last_charts_data is missing.", level="ERROR")
 
     def render_and_write_html(self, charts_data_to_render, ai_text_content, overview_stats_per_period):
-        """
-        Renders the HTML using Jinja2 template and writes to the configured file path.
-        """
+        """Renders the HTML using Jinja2 template and writes to the configured file path."""
         if ai_text_content:
             ai_text_content = re.sub(r'^\s*```(?:html)?\s*|\s*```\s*$', '', ai_text_content)
 
@@ -587,9 +613,7 @@ class MusicTracker(hass.Hass):
             self.log(f"Failed to write HTML file to {self.html_output_path}: {e}", level="ERROR")
 
     def build_prompt_from_chart_data(self, charts_for_prompt):
-        """
-        Builds a prompt string for the AI service based on chart data.
-        """
+        """Builds a prompt string for the AI service based on chart data."""
         top_artist_name = "a musician"
         potential_rates = ["daily", "weekly", "monthly", "yearly"]
         available_rate_keys = [rate for rate in potential_rates if rate in charts_for_prompt and charts_for_prompt[rate]]
@@ -617,9 +641,7 @@ class MusicTracker(hass.Hass):
         return "\n".join(prompt_lines)
 
     def build_ai_prompt_from_recent_songs(self, recent_songs_data):
-        """
-        Builds a detailed prompt for the AI service based on the last 100 songs played.
-        """
+        """Builds a detailed prompt for the AI service based on the last 100 songs played."""
         top_artist_name = "a musician"
         if recent_songs_data:
             artist_counts = {}
@@ -650,9 +672,7 @@ class MusicTracker(hass.Hass):
         return "\n".join(prompt_lines)
 
     def create_db_tables(self):
-        """
-        Creates the necessary SQLite tables if they do not yet exist.
-        """
+        """Creates the necessary SQLite tables if they do not yet exist."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -676,9 +696,7 @@ class MusicTracker(hass.Hass):
             self.log(f"DB error during table creation: {e}", level="ERROR")
 
     def cleanup_old_db_tracks(self):
-        """
-        Deletes music_history entries older than one year to keep the database lean.
-        """
+        """Deletes music_history entries older than one year to keep the database lean."""
         one_year_ago = (datetime.datetime.now() - datetime.timedelta(days=366)).strftime('%Y-%m-%d %H:%M:%S')
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -691,9 +709,7 @@ class MusicTracker(hass.Hass):
             self.log(f"DB error during old track cleanup: {e}", level="ERROR")
 
     def handle_media_player_event(self, entity_id, attribute, old_state_data, new_state_data, kwargs):
-        """
-        Listens for state changes on media player entities.
-        """
+        """Listens for state changes on media player entities."""
         old_title = old_state_data.get("attributes", {}).get("media_title")
         new_attributes = new_state_data.get("attributes", {})
         new_title = new_attributes.get("media_title")
@@ -714,9 +730,7 @@ class MusicTracker(hass.Hass):
             self._active_track_timers[entity_id] = self.run_in(self._finalize_and_store_track, self.duration_to_consider_played, track_info_at_play_start=track_info)
 
     def _finalize_and_store_track(self, kwargs):
-        """
-        After the delay, check that the same track is still playing before writing to DB.
-        """
+        """After the delay, check that the same track is still playing before writing to DB."""
         track_info = kwargs.get("track_info_at_play_start")
         if not track_info: return
         entity_id = track_info["entity_id"]
@@ -924,10 +938,13 @@ class MusicTracker(hass.Hass):
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
+                
+                # Note: Skipped song cleanup now happens before every chart generation for accuracy.
+                # This scheduled run now handles long-term maintenance.
 
-                self.log("--- Task 1: Checking for skipped tracks ---")
-                skipped_deleted_count = self._cleanup_skipped_tracks(cursor)
-                if skipped_deleted_count > 0:
+                self.log("--- Task 1: Deduplicating daily chart snapshots ---")
+                deduplicated_count = self._deduplicate_chart_history(cursor)
+                if deduplicated_count > 0:
                     database_was_modified = True
 
                 if self.cleanup_prune_enabled:
@@ -957,34 +974,40 @@ class MusicTracker(hass.Hass):
         except Exception as e:
             self.log(f"❌ An unexpected error occurred during optimization: {e}", level="ERROR")
 
-    def _cleanup_skipped_tracks(self, cursor):
-        """Finds and deletes skipped tracks. Returns number of rows affected."""
-        query = "SELECT id, timestamp, LAG(timestamp, 1) OVER (ORDER BY timestamp) AS prev_timestamp FROM music_history"
-        cursor.execute(query)
-        
-        ids_to_delete = []
-        for track in cursor.fetchall():
-            if track["prev_timestamp"] is None: continue
-            
-            current_ts = datetime.datetime.fromisoformat(track["timestamp"])
-            prev_ts = datetime.datetime.fromisoformat(track["prev_timestamp"])
-            time_diff = (current_ts - prev_ts).total_seconds()
-            
-            if 0 <= time_diff < self.cleanup_threshold_seconds:
-                ids_to_delete.append((track["id"],))
+    def _deduplicate_chart_history(self, cursor):
+        """
+        Finds and deletes redundant chart history snapshots, keeping only the
+        latest one for each day/type/period combination.
+        """
+        query_find_duplicates = """
+            SELECT id FROM (
+                SELECT 
+                    id, 
+                    ROW_NUMBER() OVER (
+                        PARTITION BY date(timestamp), type, period 
+                        ORDER BY timestamp DESC
+                    ) as rn
+                FROM chart_history
+            )
+            WHERE rn > 1;
+        """
+
+        cursor.execute(query_find_duplicates)
+        ids_to_delete = cursor.fetchall()
 
         found_count = len(ids_to_delete)
         if found_count == 0:
-            self.log("No skipped tracks found.")
+            self.log("No duplicate chart snapshots found to clean up.")
             return 0
 
-        self.log(f"Found {found_count} skipped tracks.")
+        self.log(f"Found {found_count} redundant daily chart snapshots.")
+        
         if self.cleanup_execute_mode:
-            cursor.executemany("DELETE FROM music_history WHERE id = ?;", ids_to_delete)
-            self.log(f"EXECUTE: Deleted {cursor.rowcount} skipped tracks.")
+            cursor.executemany("DELETE FROM chart_history WHERE id = ?;", ids_to_delete)
+            self.log(f"EXECUTE: Deleted {cursor.rowcount} redundant snapshots.")
             return cursor.rowcount
         else:
-            self.log("DRY RUN: Would have deleted these tracks. Enable 'cleanup_execute_on_run' to proceed.")
+            self.log("DRY RUN: Would have deleted these redundant snapshots. Enable 'cleanup_execute_on_run' to proceed.")
             return 0
 
     def _prune_chart_history(self, cursor):
