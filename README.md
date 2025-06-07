@@ -39,7 +39,7 @@ Best of all, it's designed to be **self-maintaining**, automatically cleaning an
 
 ---
 
-## 🚀 Installation
+## 🚀 Installation Guide
 
 ### Prerequisites
 
@@ -78,7 +78,6 @@ music_tracker:
   
   # --- AI & Chart Generation ---
   # The service call for your Generative AI integration. Set to false to disable.
-  # NEEDS APPDAEMON 4.5+
   ai_service: "google_generative_ai_conversation/generate_content"
   
   # Time of day (24-hour HH:MM:SS format) to automatically update the charts.
@@ -91,8 +90,7 @@ music_tracker:
   cleanup_day_of_week: "sun"
   
   # Enable this to actually delete/prune records.
-  # !! Run with 'false' first to see what would be cleaned in the logs !!
-  cleanup_execute_on_run: false
+  cleanup_execute_on_run: true
   
   # Enable this to shrink the database file size after cleanup.
   cleanup_vacuum_on_complete: true
@@ -105,7 +103,7 @@ music_tracker:
   min_songs_for_album: 4
 
   # Set to true if you want the "Update Charts" button in the web interface.
-  # See Step 3 below to set up the required automation.
+  # See Step 4 below to set up the required automation.
   webhook: true
   
   # This is the helper toggle the script listens to for manual or webhook updates.
@@ -115,7 +113,23 @@ music_tracker:
   run_on_startup: True
 ```
 
-### Step 3: Set Up Manual & Webhook Updates (Optional)
+### Step 3: Configure Home Assistant `configuration.yaml` (CRITICAL STEP)
+
+To allow Home Assistant to serve the `music_charts.html` page, you must explicitly whitelist the `www` directory.
+
+1.  Open your main `configuration.yaml` file.
+2.  Add the following lines. If you already have a `homeassistant:` block, add the `allowlist_external_dirs` line under it.
+
+    ```yaml
+    homeassistant:
+      # This line is essential for serving files from the www folder.
+      allowlist_external_dirs:
+        - /config/www
+    ```
+3.  **Save** the `configuration.yaml` file.
+4.  **Restart Home Assistant** (not just AppDaemon) for this change to take effect. You can do this from **Settings > System > Restart**.
+
+### Step 4: Set Up Manual & Webhook Updates (Optional)
 
 To trigger updates from Home Assistant or from the chart page itself, you need a helper toggle and an automation.
 
@@ -180,6 +194,12 @@ Over time, your database can grow large. This script solves that problem automat
 ---
 
 ## 🧰 Troubleshooting
+
+-   **I get a 404 Not Found error when trying to view the page:**
+    - This is the most common issue. You almost certainly missed or made a mistake in **Step 3: Configure Home Assistant `configuration.yaml`**.
+    - Ensure `allowlist_external_dirs: - /config/www` is in your `configuration.yaml`.
+    - Make sure you **restarted Home Assistant** after adding it.
+    - Verify that the `music_charts.html` file actually exists inside your `/config/www` folder.
 
 -   **Charts are not updating:**
     - Check the AppDaemon logs for any errors related to `music_tracker`. Errors are usually very descriptive.
