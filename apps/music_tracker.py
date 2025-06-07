@@ -3,6 +3,10 @@ This script tracks your music listening habits across your media players.
 Builds a database of your listening history.
 Generates daily charts for your top songs, artists, albums, and more.
 Provides insights into your musical tastes.
+Includes a fully integrated, automated database cleanup and optimization
+process to remove skipped tracks and prune old chart history, keeping the
+database lean and efficient.
+---
 
 #apps.yaml example:
 music_tracker:
@@ -15,13 +19,31 @@ music_tracker:
   media_players:
     - media_player.patio
     - media_player.kitchen
-    - media_player.bedroom
-    - media_player.living_room
-    - media_player.dining_room
   html_output_path: "/homeassistant/www/music_charts.html"
   ai_service: "google_generative_ai_conversation/generate_content"
   run_on_startup: True
-  webhook: False # Set to True to enable webhook for manual updates from the html interface. If you do that you must create a webhook in Home Assistant with the name "Update_Music_Charts" inside an automation (in action section you need to active the music charts toggle)
+  webhook: False
+
+  # --- Database Cleanup Options ---
+  # Schedule to run the cleanup process. Recommended to run during off-hours.
+  # Example: Run every Sunday at 3:05 AM.
+  cleanup_schedule: "03:05:00"
+  cleanup_day_of_week: "sun"
+  
+  # --- Skipped Tracks Options ---
+  cleanup_threshold_seconds: 60
+  
+  # --- Chart History Pruning Options ---
+  # Set to true to enable pruning of the chart_history table.
+  cleanup_prune_chart_history: true
+  # Keep data for this many days. 62 days is good for monthly comparisons.
+  cleanup_prune_keep_days: 62
+
+  # --- Execution Options ---
+  cleanup_execute_on_run: true
+  
+  # Set to true to run VACUUM and reclaim disk space after cleanup.
+  cleanup_vacuum_on_complete: true
 """
 
 import appdaemon.plugins.hass.hassapi as hass
@@ -35,12 +57,14 @@ import os
 import jinja2
 import random
 
-TEMPLATE = '''
-<!DOCTYPE html>
+TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Music Charts</title>
 <style>
 :root{color-scheme:light dark;--bg-light:#f4f4f9;--bg-dark:#1a1a1a;--text-light:#333;--text-dark:#eee;--card-light:#fff;--card-dark:#2a2a2a;--accent-light:#3498db;--accent-dark:#2980b9;}
@@ -186,7 +210,7 @@ if(countdown<=0){clearInterval(intervalId);newRefreshButton.disabled=false;newRe
 </script>
 </body>
 </html>
-'''
+"""
 
 AI_PROMPT_1 = [
     "You are a 'Musical Insights Web Weaver,' an AI expert tasked with creating a beautiful, responsive, and insightful HTML widget from music listening data.",
@@ -202,8 +226,8 @@ AI_PROMPT_1 = [
     "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game related to music preferences and recommendations (e.g., trivia on artists, lyrics, play counts, chart positions, etc.). The game should use buttons and other clickable elements—no typing required.",
     "4. Dynamic AI Artist Visualization (Mandatory):",
     "   - Image: Generate a single, visually striking image featuring 1-2 of the user's top artists. This is the ONLY image allowed in the HTML output.",
-    "   - Artist Selection: Identify the single top artist from the analyzed data. Let's refer to them as [Identified_Artist_1].",
-    "   - Pollinations.ai Prompt (Crucial Instructions): For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. The prompt MUST explicitly incorporate the actual name of [Identified_Artist_1] AND strongly aim to replicate the artist's actual physical likeness and recognizable features as closely as possible. The goal is an image that is as similar as possible to the artist's look. Combine 2-4 diverse elements from your own variations (e.g., style, setting, mood, activity) to create fresh concepts each time. If you choose to create a banner-style image (e.g., a wide aspect ratio like 16:9 or 21:9), you MAY add `&width=[VALUE]&height=[VALUE]` parameters to the URL (e.g., `&width=1200&height=400`). You decide if a banner aspect ratio is most visually appealing for the chosen artist.",
+    "   - Artist for Visualization: The primary artist for visualization is '{identified_artist_name}'. If no specific artist is provided (e.g., if '{identified_artist_name}' is a generic placeholder like 'a musician'), you may select a prominent artist from the provided data or choose a generic popular one if no data is available.",
+    "   - Pollinations.ai Prompt (Crucial Instructions): For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. The prompt MUST explicitly incorporate the actual name of the artist identified above (i.e., '{identified_artist_name}') AND strongly aim to replicate the artist's actual physical likeness and recognizable features as closely as possible. The goal is an image that is as similar as possible to the artist's look. Combine 2-4 diverse elements from your own variations (e.g., style, setting, mood, activity) to create fresh concepts each time. If you choose to create a banner-style image (e.g., a wide aspect ratio like 16:9 or 21:9), you MAY add `&width=[VALUE]&height=[VALUE]` parameters to the URL (e.g., `&width=1200&height=400`). You decide if a banner aspect ratio is most visually appealing for the chosen artist.",
     "   - Model: Use `model=turbo` or `flux`.",
     "   - URL: `https://pollinations.ai/p/[URL_ENCODED_PROMPT]?model=[SELECTED_MODEL]`",
     "   - Embedding: Embed using `<img>` with descriptive `alt` text. Style `<img>` (scoped to `.ai-container`) for responsiveness. Credit Pollinations.ai with a link.",
@@ -245,8 +269,8 @@ AI_PROMPT_2 = [
     "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game related to music preferences and recommendations (e.g., trivia on artists, lyrics, play counts, chart positions, etc.). The game should use buttons and other clickable elements—no typing required.",
     "4. Dynamic AI Artist Visualization (Mandatory):",
     "   - Image: Generate a single, visually striking image featuring 1-2 of the user's top artists. This is the ONLY image allowed in the HTML output.",
-    "   - Artist Selection: Identify the single top artist from the analyzed data. Let's refer to them as [Identified_Artist_1].",
-    "   - Pollinations.ai Prompt (Crucial Instructions): For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. The prompt MUST explicitly incorporate the actual name of [Identified_Artist_1] AND strongly aim to replicate the artist's actual physical likeness and recognizable features as closely as possible. The goal is an image that is as similar as possible to the artist's look. Combine 2-4 diverse elements from your own variations (e.g., style, setting, mood, activity) to create fresh concepts each time. If you choose to create a banner-style image (e.g., a wide aspect ratio like 16:9 or 21:9), you MAY add `&width=[VALUE]&height=[VALUE]` parameters to the URL (e.g., `&width=1200&height=400`). You decide if a banner aspect ratio is most visually appealing for the chosen artist.",
+    "   - Artist for Visualization: The primary artist for visualization is '{identified_artist_name}'. If no specific artist is provided (e.g., if '{identified_artist_name}' is a generic placeholder like 'a musician'), you may select a prominent artist from the provided data or choose a generic popular one if no data is available.",
+    "   - Pollinations.ai Prompt (Crucial Instructions): For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. The prompt MUST explicitly incorporate the actual name of the artist identified above (i.e., '{identified_artist_name}') AND strongly aim to replicate the artist's actual physical likeness and recognizable features as closely as possible. The goal is an image that is as similar as possible to the artist's look. Combine 2-4 diverse elements from your own variations (e.g., style, setting, mood, activity) to create fresh concepts each time. If you choose to create a banner-style image (e.g., a wide aspect ratio like 16:9 or 21:9), you MAY add `&width=[VALUE]&height=[VALUE]` parameters to the URL (e.g., `&width=1200&height=400`). You decide if a banner aspect ratio is most visually appealing for the chosen artist.",
     "   - Model: Use `model=turbo` or `flux`.",
     "   - URL: `https://pollinations.ai/p/[URL_ENCODED_PROMPT]?model=[SELECTED_MODEL]`",
     "   - Embedding: Embed using `<img>` with descriptive `alt` text. Style `<img>` (scoped to `.ai-container`) for responsiveness. Credit Pollinations.ai with a link.",
@@ -270,7 +294,6 @@ AI_PROMPT_2 = [
     "   - NO horizontal scrolling.",
     "5. Structure: Organize content logically into: 'Musical Analysis' (including AI image), 'Artist & Song Recommendations', and 'Interactive Game'. All JavaScript (Chart.js, game logic) must be embedded and operate within `.ai-container`."
 ]
-
 
 
 class TrackManager:
@@ -312,45 +335,67 @@ class TrackManager:
 
 class MusicTracker(hass.Hass):
     """
-    AppDaemon app to track music history in SQLite, generate charts, and output an HTML report.
+    AppDaemon app to track music history, generate charts, and self-optimize its database.
     """
 
     def initialize(self):
         self.log("MusicTracker Initializing...")
+        
+        # --- Original Configuration Loading ---
         self.media_players = self.args.get("media_players", [])
         if not isinstance(self.media_players, list):
             self.media_players = [self.media_players] if self.media_players else []
 
         self.duration_to_consider_played = self.args.get("duration", 30)
         self.min_songs_for_album_chart = self.args.get("min_songs_for_album", 3)
-        self.chart_update_time = self.args.get("update_time", "00:00:00")
+        self.chart_update_time = self.args.get("update_time", "23:59:00")
         self.db_path = self.args.get("db_path", "/config/music_data_history.db")
         self.html_output_path = self.args.get("html_output_path", "/homeassistant/www/music_charts.html")
         self.ai_service = self.args.get("ai_service", False)
         self.webhook = self.args.get("webhook", False)
 
+        # --- Database Cleanup Configuration Loading ---
+        self.cleanup_schedule = self.args.get("cleanup_schedule", "03:45:00")
+        self.cleanup_day_of_week = self.args.get("cleanup_day_of_week", "sun")
+        self.cleanup_threshold_seconds = self.args.get("cleanup_threshold_seconds", 60)
+        self.cleanup_prune_enabled = self.args.get("cleanup_prune_chart_history", True)
+        self.cleanup_prune_keep_days = self.args.get("cleanup_prune_keep_days", 62)
+        self.cleanup_execute_mode = self.args.get("cleanup_execute_on_run", True)
+        self.cleanup_vacuum_on_complete = self.args.get("cleanup_vacuum_on_complete", True)
+        
+        # --- Validation and Setup ---
         if not self.db_path:
             self.log("db_path not configured. MusicTracker cannot function.", level="ERROR")
             return
-        if not self.html_output_path:
-            self.log("html_output_path not configured. MusicTracker cannot function.", level="ERROR")
-            return
-
-        self.log(f"Config: DB Path='{self.db_path}', HTML Path='{self.html_output_path}', AI Service='{self.ai_service}'")
-        self.log(f"Tracks considered played after: {self.duration_to_consider_played}s")
-        self.log(f"Monitoring media players: {self.media_players}")
 
         self.track_manager = TrackManager()
         self.create_db_tables()
         self.cleanup_old_db_tracks()
 
+        # Setup Chart Generation Schedule
         try:
             time_obj = datetime.time.fromisoformat(self.chart_update_time)
             self.run_daily(self.scheduled_update_html_callback, time_obj)
-            self.log(f"Scheduled HTML updates at: {self.chart_update_time}")
-        except ValueError:
+            self.log(f"Scheduled HTML chart updates at: {self.chart_update_time}")
+        except (ValueError, TypeError):
             self.log(f"Invalid chart_update_time: '{self.chart_update_time}'. Use HH:MM:SS. Scheduling disabled.", level="ERROR")
 
+        # Setup Database Cleanup Schedule
+        if self.cleanup_schedule:
+            try:
+                cleanup_time_obj = datetime.time.fromisoformat(self.cleanup_schedule)
+                self.run_daily(self.run_optimization, cleanup_time_obj, constrain_days=self.cleanup_day_of_week)
+                self.log(f"Scheduled Database Cleanup to run at {self.cleanup_schedule} on {self.cleanup_day_of_week or 'all days'}.")
+                if self.cleanup_execute_mode:
+                    self.log("DB Cleanup will run in EXECUTE mode.", level="WARNING")
+                else:
+                    self.log("DB Cleanup will run in DRY RUN mode.", level="INFO")
+            except (ValueError, TypeError):
+                self.log(f"Invalid cleanup_schedule: '{self.cleanup_schedule}'. Use HH:MM:SS. Cleanup scheduling disabled.", level="ERROR")
+        else:
+            self.log("Database cleanup is not scheduled. Set 'cleanup_schedule' to enable it.", level="INFO")
+            
+        # Original Listener Setup
         self.input_boolean_chart_trigger = self.args.get("chart_trigger_boolean", "input_boolean.music_charts")
         if self.entity_exists(self.input_boolean_chart_trigger):
             self.listen_state(self.manual_update_html_callback, self.input_boolean_chart_trigger, new="on")
@@ -371,7 +416,6 @@ class MusicTracker(hass.Hass):
             self.log("No media_players configured to monitor.", level="WARNING")
 
         self._last_charts_data = {}
-
         if self.args.get("run_on_startup", True):
             self.log("run_on_startup is true, generating charts now.")
             self.update_html_and_sensors()
@@ -410,14 +454,12 @@ class MusicTracker(hass.Hass):
         current_charts_data = {}
         all_data_ok = True
 
-        # 1. Compute overview statistics for each period
         overview_stats_per_period = {}
         for period_name, days_str in timeframes.items():
             stats = self.get_overview_stats_for_period(days_str)
             overview_stats_per_period[period_name] = stats
         self._last_overview_stats_per_period = overview_stats_per_period
 
-        # 2. Generate chart data for each period
         for period_name, days_str in timeframes.items():
             self.log(f"Generating chart data for period: {period_name} ({days_str})")
             try:
@@ -443,23 +485,13 @@ class MusicTracker(hass.Hass):
             self.log("Errors during chart data generation. HTML might be incomplete.", level="WARNING")
 
         self._last_charts_data = current_charts_data
-
-        # 3. Render and write HTML file
-        self.log("Attempting initial HTML write (without AI analysis)...")
         self.render_and_write_html(current_charts_data, None, overview_stats_per_period)
 
-        # 4. Optionally call AI service for analysis
         if self.ai_service:
-            analysis_options = ["charts", "recent_songs"]
-            chosen_method = random.choice(analysis_options)
-            self.log(f"Randomly selected AI analysis method: '{chosen_method}'")
-
-            # Execute the chosen method
+            chosen_method = random.choice(["charts", "recent_songs"])
             if chosen_method == "charts":
-                self.log("Using aggregated chart data for AI prompt.")
                 self._call_ai_analysis(current_charts_data)
             else: 
-                self.log("Using recent unique songs list for AI prompt.")
                 self._call_ai_analysis_with_recent_songs()
         else:
             self.log("AI service not configured. Skipping AI analysis.")
@@ -470,71 +502,34 @@ class MusicTracker(hass.Hass):
         """
         Sends chart data to the configured AI service for analysis and waits for callback.
         """
-        if not isinstance(self.ai_service, str):
-            self.log(f"AI service not configured as string. Skipping. Current: {self.ai_service}", level="DEBUG")
-            return
-
-        parts = self.ai_service.split("/", 1)
-        if len(parts) != 2:
-            self.log(f"Invalid ai_service format: '{self.ai_service}'. Skipping.", level="WARNING")
-            return
-
-        domain, service = parts
+        if not isinstance(self.ai_service, str): return
+        domain, service = self.ai_service.split("/", 1)
         prompt = self.build_prompt_from_chart_data(charts_data_for_ai)
         
-        self.log(f"Calling AI service: {domain}/{service}")
         try:
-            self.call_service(
-                f"{domain}/{service}", prompt=prompt,
-                timeout=120, hass_timeout=120,
-                callback=self._ai_response_callback
-            )
-            self.log(f"AI service call for {domain}/{service} initiated.")
+            self.call_service(f"{domain}/{service}", prompt=prompt, timeout=120, hass_timeout=120, callback=self._ai_response_callback)
         except Exception as e:
-            self.log(f"Error initiating AI service call {domain}/{service}: {e}", level="ERROR")
-            # Re-render HTML including error message
+            self.log(f"Error initiating AI service call: {e}", level="ERROR")
             self.render_and_write_html(self._last_charts_data, f"Error initiating AI analysis: {e}", self._last_overview_stats_per_period)
 
     def _call_ai_analysis_with_recent_songs(self):
         """
         Gets recent songs, builds a prompt, and calls the AI.
         """
-        if not self.ai_service:
-            self.log("AI service not configured. Skipping analysis.", level="DEBUG")
-            return
-
-        # 1. Get the new data
-        self.log("Fetching last 100 songs for AI analysis.")
-        #last_100_songs = self.get_last_n_songs_with_timestamps(100)
+        if not self.ai_service: return
         last_100_songs = self.get_last_n_unique_songs_with_timestamps(100)
         
         if not last_100_songs:
-            self.log("No recent songs found to send to AI. Aborting.", level="WARNING")
-            # Optionally re-render HTML with a message
             self.render_and_write_html(self._last_charts_data, "Could not generate AI analysis: no recent listening data found.", self._last_overview_stats_per_period)
             return
 
-        # 2. Build the prompt with the new function
-        self.log("Building AI prompt from recent songs list.")
         prompt = self.build_ai_prompt_from_recent_songs(last_100_songs)
+        domain, service = self.ai_service.split("/", 1)
 
-        # 3. Call the AI service (this part remains the same)
-        parts = self.ai_service.split("/", 1)
-        if len(parts) != 2:
-            self.log(f"Invalid ai_service format: '{self.ai_service}'. Skipping.", level="WARNING")
-            return
-
-        domain, service = parts
-        self.log(f"Calling AI service: {domain}/{service} with new prompt.")
         try:
-            self.call_service(
-                f"{domain}/{service}", prompt=prompt,
-                timeout=120, hass_timeout=120,
-                callback=self._ai_response_callback
-            )
+            self.call_service(f"{domain}/{service}", prompt=prompt, timeout=120, hass_timeout=120, callback=self._ai_response_callback)
         except Exception as e:
-            self.log(f"Error initiating AI service call {domain}/{service}: {e}", level="ERROR")
-            # Handle error by re-rendering HTML
+            self.log(f"Error initiating AI service call: {e}", level="ERROR")
             self.render_and_write_html(self._last_charts_data, f"Error initiating AI analysis: {e}", self._last_overview_stats_per_period)
 
 
@@ -543,7 +538,6 @@ class MusicTracker(hass.Hass):
         Callback after AI service returns. Extracts AI text and re-renders HTML including it.
         """
         ai_text = None
-
         if isinstance(resp, dict):
             if resp.get("success"):
                 result = resp.get("result", {})
@@ -551,18 +545,12 @@ class MusicTracker(hass.Hass):
                     ai_text = result["response"].get("text")
                 elif "text" in result:
                     ai_text = result.get("text")
-
-                if ai_text:
-                    self.log(f"AI analysis successful. Text length: {len(ai_text)}.")
-                else:
-                    self.log(f"AI success, but 'text' not found. Result: {str(result)[:200]}", level="WARNING")
+                if not ai_text:
                     ai_text = "AI analysis successful, but no content extracted."
             else:
                 err_msg = resp.get("error", {}).get("message", "Unspecified error from AI service.")
-                self.log(f"AI service call failed. Error: '{err_msg}'. Response: {str(resp)[:200]}", level="WARNING")
                 ai_text = f"AI analysis failed: {err_msg}"
         else:
-            self.log(f"AI response not a dict. Received: {type(resp)}", level="WARNING")
             ai_text = "AI analysis returned an unexpected response format."
 
         if hasattr(self, '_last_charts_data') and self._last_charts_data:
@@ -575,15 +563,10 @@ class MusicTracker(hass.Hass):
         Renders the HTML using Jinja2 template and writes to the configured file path.
         """
         if ai_text_content:
-            # Remove any surrounding ```html``` markers
-            ai_text_content = re.sub(r'^\s*```(?:html)?\s*', '', ai_text_content)
-            ai_text_content = re.sub(r'\s*```\s*$', '', ai_text_content)
-        self.log(f"Rendering HTML. AI text provided: {ai_text_content is not None}")
+            ai_text_content = re.sub(r'^\s*```(?:html)?\s*|\s*```\s*$', '', ai_text_content)
+
         try:
-            env = jinja2.Environment(
-                loader=jinja2.BaseLoader(),
-                autoescape=jinja2.select_autoescape(['html', 'xml'])
-            )
+            env = jinja2.Environment(loader=jinja2.BaseLoader(), autoescape=jinja2.select_autoescape(['html', 'xml']))
             template = env.from_string(TEMPLATE)
             html_output = template.render(
                 generated_at=datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
@@ -607,101 +590,63 @@ class MusicTracker(hass.Hass):
         """
         Builds a prompt string for the AI service based on chart data.
         """
-        prompt_lines = list(AI_PROMPT_1)
+        top_artist_name = "a musician"
         potential_rates = ["daily", "weekly", "monthly", "yearly"]
+        available_rate_keys = [rate for rate in potential_rates if rate in charts_for_prompt and charts_for_prompt[rate]]
+        
+        selected_rate_key = random.choice(available_rate_keys) if available_rate_keys else None
+        data_for_selected_rate = charts_for_prompt.get(selected_rate_key, {}) if selected_rate_key else {}
+        top_artists_list = data_for_selected_rate.get("artists", [])
+        if top_artists_list: top_artist_name = top_artists_list[0].get('artist', "a musician")
+        
+        display_name_for_rate = selected_rate_key.capitalize() if selected_rate_key else "Overall"
+        dates_str_for_selected_rate = data_for_selected_rate.get("dates", "N/A")
 
-        available_rate_keys = [
-            rate for rate in potential_rates
-            if rate in charts_for_prompt and charts_for_prompt[rate]
-        ]
-
-        selected_rate_key = None
-        data_for_selected_rate = {}
-        dates_str_for_selected_rate = "N/A"
-        display_name_for_rate = "Selected Period"
-
-        if available_rate_keys:
-            selected_rate_key = random.choice(available_rate_keys)
-            data_for_selected_rate = charts_for_prompt.get(selected_rate_key, {})
-            dates_str_for_selected_rate = data_for_selected_rate.get("dates", "N/A")
-            display_name_for_rate = selected_rate_key.capitalize()
-        else:
-            display_name_for_rate = "Overall"
-
+        prompt_lines = [line.format(identified_artist_name=top_artist_name) for line in AI_PROMPT_1]
         prompt_lines.extend([
             f"My listening data for the {display_name_for_rate} period covers: {dates_str_for_selected_rate}.",
             f"\nTop {display_name_for_rate} Songs Data (up to 100):",
-            "| Artist | Title | Plays |",
-            "|---|---|---|"
+            "| Artist | Title | Plays |", "|---|---|---|"
         ])
-
         songs_to_list = data_for_selected_rate.get("songs", [])[:100]
-
         if songs_to_list:
-            for song_item in songs_to_list:
-                artist = song_item.get('artist', 'N/A')
-                title = song_item.get('title', 'N/A')
-                plays = song_item.get('plays', 'N/A')
-                prompt_lines.append(f"| {artist} | {title} | {plays} |")
+            for song in songs_to_list:
+                prompt_lines.append(f"| {song.get('artist', 'N/A')} | {song.get('title', 'N/A')} | {song.get('plays', 'N/A')} |")
         else:
-            prompt_lines.append(f"| No {display_name_for_rate.lower()} song data available for this period. | | |")
-
+            prompt_lines.append(f"| No {display_name_for_rate.lower()} song data available. | | |")
         return "\n".join(prompt_lines)
 
     def build_ai_prompt_from_recent_songs(self, recent_songs_data):
         """
         Builds a detailed prompt for the AI service based on the last 100 songs played.
-
-        This function replaces the chart-based prompt builder. It provides a chronological
-        list of recently played songs, giving the AI a direct view of listening habits.
-
-        Args:
-            recent_songs_data (list): A list of song dictionaries from
-                                    get_last_n_songs_with_timestamps().
-                                    Each dict should have 'artist', 'title', 'timestamp'.
-
-        Returns:
-            str: A formatted string to be used as a prompt for the AI service.
         """
-        # Start with the base instructions for the AI
-        prompt_lines = list(AI_PROMPT_2)
+        top_artist_name = "a musician"
+        if recent_songs_data:
+            artist_counts = {}
+            for song in recent_songs_data:
+                artist = song.get('artist')
+                if artist: artist_counts[artist] = artist_counts.get(artist, 0) + 1
+            if artist_counts: top_artist_name = max(artist_counts, key=artist_counts.get)
 
+        prompt_lines = [line.format(identified_artist_name=top_artist_name) for line in AI_PROMPT_2]
         if not recent_songs_data:
-            self.log("No recent songs data provided to build AI prompt.", level="WARNING")
-            # Add a fallback message to the prompt
             prompt_lines.append("\nMy listening data is not available at this moment.")
             return "\n".join(prompt_lines)
 
-        # Describe the data context for the AI
-        first_song_ts_str = recent_songs_data[0]['timestamp']
-        last_song_ts_str = recent_songs_data[-1]['timestamp']
-
-        # Format timestamps for a more readable date range
-        try:
-            first_date = datetime.datetime.strptime(first_song_ts_str, '%Y-%m-%d %H:%M:%S').strftime('%B %d, %Y')
-            last_date = datetime.datetime.strptime(last_song_ts_str, '%Y-%m-%d %H:%M:%S').strftime('%B %d, %Y')
-            date_range_info = f"This data covers my listening from approximately {last_date} to {first_date}."
-        except (ValueError, IndexError):
-            date_range_info = "Here is my most recent listening history."
+        first_date = datetime.datetime.strptime(recent_songs_data[0]['timestamp'], '%Y-%m-%d %H:%M:%S').strftime('%B %d, %Y')
+        last_date = datetime.datetime.strptime(recent_songs_data[-1]['timestamp'], '%Y-%m-%d %H:%M:%S').strftime('%B %d, %Y')
+        date_range_info = f"This data covers my listening from approximately {last_date} to {first_date}."
 
         prompt_lines.extend([
             f"\nAnalyze my most recent listening history. {date_range_info}",
             "Below is a list of the last 100 unique songs I've played, with the most recent ones listed first.",
             "\nMy Most Recent Songs (newest first):",
-            "| Artist | Title | Played At (Timestamp) |",
-            "|---|---|---|"
+            "| Artist | Title | Played At (Timestamp) |", "|---|---|---|"
         ])
-
-        # Add each song to the prompt in a markdown table format
         for song in recent_songs_data:
-            artist = song.get('artist', 'N/A')
-            title = song.get('title', 'N/A')
-            timestamp = song.get('timestamp', 'N/A')
-            # Sanitize pipe characters to not break the markdown table
-            artist = artist.replace('|', '-')
-            title = title.replace('|', '-')
-            prompt_lines.append(f"| {artist} | {title} | {timestamp} |")
-
+            artist = str(song.get('artist', 'N/A')).replace('|', '-')
+            title = str(song.get('title', 'N/A')).replace('|', '-')
+            prompt_lines.append(f"| {artist} | {title} | {song.get('timestamp', 'N/A')} |")
         return "\n".join(prompt_lines)
 
     def create_db_tables(self):
@@ -713,28 +658,20 @@ class MusicTracker(hass.Hass):
                 cursor = conn.cursor()
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS music_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        artist TEXT,
-                        title TEXT,
-                        album TEXT,
-                        media_channel TEXT,
-                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, artist TEXT, title TEXT,
+                        album TEXT, media_channel TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS chart_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        type TEXT,
-                        period TEXT,
-                        data TEXT,
-                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, period TEXT,
+                        data TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_music_history_timestamp ON music_history (timestamp);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_music_history_lookup ON music_history (artist, title, album);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_chart_history_lookup ON chart_history (type, period, timestamp);")
                 conn.commit()
-            self.log("DB tables checked/created (using 'type' & 'period' for chart_history).")
+            self.log("DB tables checked/created.")
         except sqlite3.Error as e:
             self.log(f"DB error during table creation: {e}", level="ERROR")
 
@@ -742,16 +679,13 @@ class MusicTracker(hass.Hass):
         """
         Deletes music_history entries older than one year to keep the database lean.
         """
-        one_year_ago = datetime.datetime.now() - datetime.timedelta(days=366)
+        one_year_ago = (datetime.datetime.now() - datetime.timedelta(days=366)).strftime('%Y-%m-%d %H:%M:%S')
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "DELETE FROM music_history WHERE timestamp < ?",
-                    (one_year_ago.strftime('%Y-%m-%d %H:%M:%S'),)
-                )
+                cursor.execute("DELETE FROM music_history WHERE timestamp < ?", (one_year_ago,))
                 if cursor.rowcount > 0:
-                    self.log(f"Cleaned {cursor.rowcount} old tracks from DB.")
+                    self.log(f"Cleaned {cursor.rowcount} old tracks (>1yr) from DB.")
                 conn.commit()
         except sqlite3.Error as e:
             self.log(f"DB error during old track cleanup: {e}", level="ERROR")
@@ -759,173 +693,73 @@ class MusicTracker(hass.Hass):
     def handle_media_player_event(self, entity_id, attribute, old_state_data, new_state_data, kwargs):
         """
         Listens for state changes on media player entities.
-        When a new track starts playing, schedules it to be stored after duration_to_consider_played seconds.
         """
-        old_attributes = old_state_data.get("attributes", {}) if old_state_data else {}
-        new_attributes = new_state_data.get("attributes", {}) if new_state_data else {}
-
-        old_title = old_attributes.get("media_title")
+        old_title = old_state_data.get("attributes", {}).get("media_title")
+        new_attributes = new_state_data.get("attributes", {})
         new_title = new_attributes.get("media_title")
-        new_player_state = new_state_data.get("state") if new_state_data else "unknown"
+        new_player_state = new_state_data.get("state")
 
-        # If a timer for this entity already exists and track changed or stopped, cancel it
         if entity_id in self._active_track_timers:
-            if (old_title != new_title and new_title is not None) or new_player_state != "playing":
-                timer_handle = self._active_track_timers.pop(entity_id)
-                if hasattr(self, 'timer_running') and self.timer_running(timer_handle):
-                    self.cancel_timer(timer_handle)
-                    self.log(f"Cancelled track timer for {entity_id} due to change.", level="DEBUG")
-                elif not hasattr(self, 'timer_running'):
-                    try:
-                        self.cancel_timer(timer_handle)
-                        self.log(f"Attempted cancellation of track timer for {entity_id} (timer_running not available).", level="DEBUG")
-                    except:
-                        pass
+            if old_title != new_title or new_player_state != "playing":
+                self.cancel_timer(self._active_track_timers.pop(entity_id))
 
-        # If new state is playing, schedule storing the track after duration_to_consider_played seconds
-        if new_player_state == "playing":
-            artist = new_attributes.get("media_artist")
-            title = new_title
-
-            if not artist or not title:
-                self.log(f"{entity_id} playing, but missing artist/title. Attributes: {new_attributes}", level="DEBUG")
-                return
-
-            current_track_info = {
+        if new_player_state == "playing" and new_attributes.get("media_artist") and new_title:
+            track_info = {
                 "entity_id": entity_id,
-                "artist": artist,
-                "title": title,
+                "artist": new_attributes.get("media_artist"),
+                "title": new_title,
                 "album": new_attributes.get("media_album_name"),
                 "media_channel": new_attributes.get("media_channel") or new_attributes.get("source"),
-                "media_playlist": new_attributes.get("media_playlist") or new_attributes.get("source")
             }
-
-            self.log(f"{entity_id} playing '{title}'. Scheduling storage in {self.duration_to_consider_played}s.", level="DEBUG")
-            timer_handle = self.run_in(
-                self._finalize_and_store_track,
-                self.duration_to_consider_played,
-                track_info_at_play_start=current_track_info
-            )
-            self._active_track_timers[entity_id] = timer_handle
+            self._active_track_timers[entity_id] = self.run_in(self._finalize_and_store_track, self.duration_to_consider_played, track_info_at_play_start=track_info)
 
     def _finalize_and_store_track(self, kwargs):
         """
         After the delay, check that the same track is still playing before writing to DB.
         """
-        track_info_original = kwargs.get("track_info_at_play_start")
-        if not track_info_original:
-            self.log("Error: _finalize_and_store_track missing track_info.", level="ERROR")
-            return
-
-        entity_id = track_info_original["entity_id"]
+        track_info = kwargs.get("track_info_at_play_start")
+        if not track_info: return
+        entity_id = track_info["entity_id"]
         self._active_track_timers.pop(entity_id, None)
 
         current_state = self.get_state(entity_id, attribute="all")
-        if not current_state or current_state.get("state") != "playing":
-            self.log(f"Track storage for {entity_id} aborted: Not playing.", level="DEBUG")
-            return
+        if not current_state or current_state.get("state") != "playing": return
 
         current_attrs = current_state.get("attributes", {})
-        if (current_attrs.get("media_artist") != track_info_original["artist"] or
-            current_attrs.get("media_title") != track_info_original["title"]):
-            self.log(f"Track storage for {entity_id} aborted: Track changed.", level="DEBUG")
-            return
+        if current_attrs.get("media_artist") != track_info["artist"] or current_attrs.get("media_title") != track_info["title"]: return
 
-        artist = track_info_original["artist"]
-        title = track_info_original["title"]
-        album = track_info_original["album"]
-        media_channel = track_info_original["media_channel"]
-        media_playlist = track_info_original["media_playlist"]
-
-        # Skip advertisements, unknown, or generic tracks
-        if title.lower() in ["tv", "unknown", "advertisement"]:
-            return
+        artist, title, album, media_channel = track_info["artist"], track_info["title"], track_info["album"], track_info["media_channel"]
+        if title.lower() in ["tv", "unknown", "advertisement"]: return
 
         cleaned_title = self.clean_text_for_chart(title)
         cleaned_album = self.clean_text_for_chart(album) if album else "Unknown Album"
         track_identifier = f"{artist.lower().strip()}|{cleaned_title.lower().strip()}"
 
-        if self.track_manager.has_been_played_recently(track_identifier):
-            self.log(f"Track '{track_identifier}' on {entity_id} recently processed. Skipping.", level="DEBUG")
-            return
-
+        if self.track_manager.has_been_played_recently(track_identifier): return
         self.track_manager.add_track(track_identifier)
 
-        if not cleaned_album or cleaned_album.lower() == "unknown album":
-            cleaned_album = cleaned_title
-        if not media_channel:
-            media_channel = media_playlist
+        self.store_track_in_db(artist, cleaned_title, cleaned_album or cleaned_title, media_channel)
 
-        self.log(f"Storing track from {entity_id}: {artist} | {cleaned_title} | {cleaned_album} | {media_channel}")
-        self.store_track_in_db(artist, cleaned_title, cleaned_album, media_channel)
-
-    def clean_text_for_chart(self, text_to_clean: str) -> str:
-        """
-        Removes common version keywords (e.g., remix, live, edit) from track/album titles
-        for cleaner grouping.
-        """
-        if not text_to_clean or not isinstance(text_to_clean, str):
-            return ""
-        version_keywords = [
-            'remaster', 'remastered', 're-master', 're-mastered', 'mix', 'remix', 'dub',
-            'stereo', 'mono', 'demo', 'deluxe', 'instrumental', 'extended',
-            'version', 'radio edit', 'live', 'edit', 'anniversary', 'edition',
-            'single', 'explicit', 'clean', 'original', 'acoustic', 'unplugged'
-        ]
-        # Note: each "\." is now written as "\\." so the backslash is preserved literally.
-        pattern = (
-            r'\s*[\(\[\-](?:[^\(\)\[\]\-]*\b(?:'
-            + '|'.join(f"{k}\\.?" for k in version_keywords)
-            + r')\b[^\(\)\[\]\-]*?)[\)\]\-]?\s*'
-        )
-        cleaned_text = re.sub(pattern, '', text_to_clean, flags=re.IGNORECASE)
-        cleaned_text = cleaned_text.strip()
-        cleaned_text = re.sub(r'\s{2,}', ' ', cleaned_text)
-        return cleaned_text if cleaned_text else text_to_clean
+    def clean_text_for_chart(self, text: str) -> str:
+        """Removes common version keywords from track/album titles."""
+        if not isinstance(text, str): return ""
+        keywords = ['remaster', 'mix', 'remix', 'stereo', 'mono', 'demo', 'deluxe', 'instrumental', 'extended', 'version', 'radio edit', 'live', 'edit', 'anniversary', 'edition', 'single', 'explicit', 'clean', 'original', 'acoustic', 'unplugged']
+        pattern = r'\s*[\(\[\-](?:[^\(\)\[\]\-]*\b(?:' + '|'.join(f"{k}\\.?" for k in keywords) + r')\b[^\(\)\[\]\-]*?)[\)\]\-]?\s*'
+        cleaned = re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+        return cleaned if cleaned else text
 
     def store_track_in_db(self, artist, title, album, media_channel):
-        """
-        Inserts the given track data into the music_history table.
-        """
+        """Inserts the given track data into the music_history table."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO music_history (artist, title, album, media_channel, timestamp)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (artist, title, album, media_channel))
+                cursor.execute("INSERT INTO music_history (artist, title, album, media_channel, timestamp) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)", (artist, title, album, media_channel))
                 conn.commit()
         except sqlite3.Error as e:
             self.log(f"DB error storing track: {e}", level="ERROR")
 
-    def update_home_assistant_sensors(self, charts_data):
-        """
-        Optionally updates Home Assistant sensor entities with top chart info (not used here).
-        """
-        self.log("Updating Home Assistant sensor entities...")
-        if not isinstance(charts_data, dict):
-            self.log("Cannot update HA sensors: charts_data invalid.", level="WARNING")
-            return
-
-        for period_key, period_config in charts_data.items():
-            if not isinstance(period_config, dict):
-                self.log(f"Skipping HA sensor update for {period_key}: invalid data.", level="WARNING")
-                continue
-            limit = 10
-            dates_str = period_config.get("dates", "N/A")
-            self.set_state(f"sensor.music_charts_top_songs", state=f"Top Songs ({dates_str})",
-                        attributes={"songs": period_config.get("songs", [])[:limit], "chart_dates": dates_str})
-            self.set_state(f"sensor.music_charts_top_artists", state=f"Top Artists ({dates_str})",
-                        attributes={"artists": period_config.get("artists", [])[:limit], "chart_dates": dates_str})
-            self.set_state(f"sensor.music_charts_top_albums", state=f"Top Albums ({dates_str})",
-                        attributes={"albums": period_config.get("albums", [])[:limit], "chart_dates": dates_str})
-        self.log("Home Assistant sensor entities updated.")
-
     def get_chart_dates_for_period(self, days_str):
-        """
-        Returns a date range string (DD/MM/YYYY or DD/MM/YYYY - DD/MM/YYYY)
-        for entries in music_history within the period specified by days_str.
-        """
+        """Returns a date range string for entries in music_history."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -935,421 +769,243 @@ class MusicTracker(hass.Hass):
                 if res and res[0] and res[1]:
                     s_dt = datetime.datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S')
                     e_dt = datetime.datetime.strptime(res[1], '%Y-%m-%d %H:%M:%S')
-                    if s_dt.date() == e_dt.date():
-                        return s_dt.strftime('%d/%m/%Y')
-                    else:
-                        return f"{s_dt.strftime('%d/%m/%Y')} - {e_dt.strftime('%d/%m/%Y')}"
-                elif res and res[0]:
-                    return datetime.datetime.strptime(res[0], '%Y-%m-%d %H:%M:%S').strftime('%d/%m/%Y')
-                else:
-                    e_dt = datetime.datetime.now()
-                    s_dt = e_dt - datetime.timedelta(days=int(days_str.split()[0]) - 1)
-                    return f"{s_dt.strftime('%d/%m/%Y')} - {e_dt.strftime('%d/%m/%Y')} (No Data)"
+                    return s_dt.strftime('%d/%m/%Y') if s_dt.date() == e_dt.date() else f"{s_dt.strftime('%d/%m/%Y')} - {e_dt.strftime('%d/%m/%Y')}"
+                return "Date Range N/A"
         except Exception as e:
             self.log(f"Error getting chart dates for '{days_str}': {e}", level="WARNING")
             return "Date Range Error"
 
     def get_top_songs(self, days_str, limit, period_name):
-        """
-        Returns a list of dictionaries for the top songs in the given period.
-        Each dict contains title, artist, album, plays, change, new_entry.
-        """
+        """Returns a list of dictionaries for the top songs."""
         previous_chart_data = self.get_previous_chart_data("songs", period_name)
-        query = f"""
-            SELECT title, artist, album, COUNT(*) as item_count
-            FROM music_history
-            WHERE timestamp >= datetime('now', '-{days_str}')
-            GROUP BY title, artist, album
-            ORDER BY item_count DESC, artist ASC, title ASC
-            LIMIT {limit}
-        """
-        top_items_list = []
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(query)
-                db_results = cursor.fetchall()
-
-            for rank, db_row_tuple in enumerate(db_results, 1):
-                current_item_dict = {
-                    "title": db_row_tuple[0],
-                    "artist": db_row_tuple[1],
-                    "album": db_row_tuple[2],
-                    "plays": db_row_tuple[3],
-                }
-                change_info = self.calculate_chart_change(previous_chart_data, current_item_dict, rank, "songs")
-                current_item_dict.update({
-                    "change": change_info['change_value'],
-                    "new_entry": change_info['is_new_entry']
-                })
-                top_items_list.append(current_item_dict)
-        except sqlite3.Error as e:
-            self.log(f"DB error in get_top_songs ({period_name}): {e}", level="ERROR")
-        return top_items_list
+        query = f"SELECT title, artist, album, COUNT(*) as c FROM music_history WHERE timestamp >= datetime('now', '-{days_str}') GROUP BY title, artist, album ORDER BY c DESC, artist, title LIMIT {limit}"
+        return self._get_chart_data(query, ["title", "artist", "album", "plays"], "songs", period_name, previous_chart_data)
 
     def get_top_artists(self, days_str, limit, period_name):
-        """
-        Returns a list of dictionaries for the top artists in the given period.
-        Each dict contains artist, plays, change, new_entry.
-        """
+        """Returns a list of dictionaries for the top artists."""
         previous_chart_data = self.get_previous_chart_data("artists", period_name)
-        query = f"""
-            SELECT artist, COUNT(*) as item_count
-            FROM music_history
-            WHERE timestamp >= datetime('now', '-{days_str}') AND artist IS NOT NULL AND artist != ''
-            GROUP BY artist
-            ORDER BY item_count DESC, artist ASC
-            LIMIT {limit}
-        """
-        top_items_list = []
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(query)
-                db_results = cursor.fetchall()
-            for rank, db_row_tuple in enumerate(db_results, 1):
-                current_item_dict = {
-                    "artist": db_row_tuple[0],
-                    "plays": db_row_tuple[1],
-                }
-                change_info = self.calculate_chart_change(previous_chart_data, current_item_dict, rank, "artists")
-                current_item_dict.update({
-                    "change": change_info['change_value'],
-                    "new_entry": change_info['is_new_entry']
-                })
-                top_items_list.append(current_item_dict)
-        except sqlite3.Error as e:
-            self.log(f"DB error in get_top_artists ({period_name}): {e}", level="ERROR")
-        return top_items_list
+        query = f"SELECT artist, COUNT(*) as c FROM music_history WHERE timestamp >= datetime('now', '-{days_str}') AND artist IS NOT NULL AND artist != '' GROUP BY artist ORDER BY c DESC, artist LIMIT {limit}"
+        return self._get_chart_data(query, ["artist", "plays"], "artists", period_name, previous_chart_data)
 
     def get_top_albums(self, days_str, limit, period_name):
-        """
-        Returns a list of dictionaries for the top albums in the given period.
-        Each dict contains artist, album, tracks, change, new_entry.
-        """
+        """Returns a list of dictionaries for the top albums."""
         previous_chart_data = self.get_previous_chart_data("albums", period_name)
-        query = f"""
-            SELECT artist, album, COUNT(DISTINCT title) as song_count
-            FROM music_history
-            WHERE timestamp >= datetime('now', '-{days_str}') AND album IS NOT NULL AND album != '' AND artist IS NOT NULL AND artist != ''
-            GROUP BY artist, album
-            HAVING song_count >= {self.min_songs_for_album_chart}
-            ORDER BY song_count DESC, album ASC, artist ASC
-            LIMIT {limit}
-        """
-        top_items_list = []
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(query)
-                db_results = cursor.fetchall()
-
-            for rank, db_row_tuple in enumerate(db_results, 1):
-                current_item_dict = {
-                    "artist": db_row_tuple[0],
-                    "album": db_row_tuple[1],
-                    "tracks": db_row_tuple[2],
-                }
-                change_info = self.calculate_chart_change(previous_chart_data, current_item_dict, rank, "albums")
-                current_item_dict.update({
-                    "change": change_info['change_value'],
-                    "new_entry": change_info['is_new_entry']
-                })
-                top_items_list.append(current_item_dict)
-        except sqlite3.Error as e:
-            self.log(f"DB error in get_top_albums ({period_name}): {e}", level="ERROR")
-        return top_items_list
+        query = f"SELECT artist, album, COUNT(DISTINCT title) as c FROM music_history WHERE timestamp >= datetime('now', '-{days_str}') AND album IS NOT NULL AND album != '' AND artist IS NOT NULL AND artist != '' GROUP BY artist, album HAVING c >= {self.min_songs_for_album_chart} ORDER BY c DESC, album, artist LIMIT {limit}"
+        return self._get_chart_data(query, ["artist", "album", "tracks"], "albums", period_name, previous_chart_data)
 
     def get_top_media_channels(self, days_str, limit, period_name):
-        """
-        Returns a list of dictionaries for the top media channels in the given period.
-        Each dict contains channel, plays, change, new_entry.
-        """
+        """Returns a list of dictionaries for the top media channels."""
         previous_chart_data = self.get_previous_chart_data('media_channels', period_name)
-        query = f"""
-            SELECT media_channel, COUNT(*) as item_count
-            FROM music_history
-            WHERE timestamp >= datetime('now', '-{days_str}') AND media_channel IS NOT NULL AND media_channel != ''
-            GROUP BY media_channel
-            ORDER BY item_count DESC, media_channel ASC
-            LIMIT {limit}
-        """
-        top_items_list = []
+        query = f"SELECT media_channel, COUNT(*) as c FROM music_history WHERE timestamp >= datetime('now', '-{days_str}') AND media_channel IS NOT NULL AND media_channel != '' GROUP BY media_channel ORDER BY c DESC, media_channel LIMIT {limit}"
+        return self._get_chart_data(query, ["channel", "plays"], "media_channels", period_name, previous_chart_data)
+        
+    def _get_chart_data(self, query, keys, category, period, prev_data):
+        """Generic function to fetch and process chart data."""
+        items_list = []
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(query)
-                db_results = cursor.fetchall()
-            for rank, db_row_tuple in enumerate(db_results, 1):
-                current_item_dict = {
-                    "channel": db_row_tuple[0],
-                    "plays": db_row_tuple[1],
-                }
-                change_info = self.calculate_chart_change(previous_chart_data, current_item_dict, rank, "media_channels")
-                current_item_dict.update({
-                    "change": change_info['change_value'],
-                    "new_entry": change_info['is_new_entry']
-                })
-                top_items_list.append(current_item_dict)
+                for rank, row in enumerate(cursor.fetchall(), 1):
+                    item = dict(zip(keys, row))
+                    change_info = self.calculate_chart_change(prev_data, item, rank, category)
+                    item.update(change=change_info['change_value'], new_entry=change_info['is_new_entry'])
+                    items_list.append(item)
         except sqlite3.Error as e:
-            self.log(f"DB error in get_top_media_channels ({period_name}): {e}", level="ERROR")
-        return top_items_list
+            self.log(f"DB error in _get_chart_data for {category}/{period}: {e}", level="ERROR")
+        return items_list
 
-    def calculate_chart_change(self, previous_chart_list, current_item_dict, current_rank, category_name):
-        """
-        Compares current item to previous chart to compute rank change or mark as new entry.
-        """
-        previous_rank_found = None
-
-        for idx, prev_item_dict in enumerate(previous_chart_list):
+    def calculate_chart_change(self, previous_chart_list, current_item, current_rank, category):
+        """Computes rank change or marks as new entry."""
+        for idx, prev_item in enumerate(previous_chart_list):
             match = False
-            if not isinstance(prev_item_dict, dict):
-                continue
-
-            if category_name == 'songs':
-                if (prev_item_dict.get('title') == current_item_dict.get('title') and
-                    prev_item_dict.get('artist') == current_item_dict.get('artist') and
-                    prev_item_dict.get('album') == current_item_dict.get('album')):
-                    match = True
-            elif category_name == 'artists':
-                if prev_item_dict.get('artist') == current_item_dict.get('artist'):
-                    match = True
-            elif category_name == 'albums':
-                if (prev_item_dict.get('artist') == current_item_dict.get('artist') and
-                    prev_item_dict.get('album') == current_item_dict.get('album')):
-                    match = True
-            elif category_name == 'media_channels':
-                if prev_item_dict.get('channel') == current_item_dict.get('channel'):
-                    match = True
-
+            if category == 'songs' and prev_item.get('title') == current_item.get('title') and prev_item.get('artist') == current_item.get('artist'): match = True
+            elif category == 'artists' and prev_item.get('artist') == current_item.get('artist'): match = True
+            elif category == 'albums' and prev_item.get('album') == current_item.get('album') and prev_item.get('artist') == current_item.get('artist'): match = True
+            elif category == 'media_channels' and prev_item.get('channel') == current_item.get('channel'): match = True
             if match:
-                previous_rank_found = idx + 1
-                break
+                return {'change_value': (idx + 1) - current_rank, 'is_new_entry': False}
+        return {'change_value': 0, 'is_new_entry': True}
 
-        calculated_change = 0
-        is_new = (previous_rank_found is None)
-        if not is_new:
-            calculated_change = previous_rank_found - current_rank
-
-        return {'change_value': calculated_change, 'is_new_entry': is_new, 'is_re_entry': False}
-
-    def store_chart_data_history(self, type_of_chart, period_identifier, chart_data_list):
-        """
-        Saves chart data JSON to chart_history table for later comparison.
-        """
-        if not chart_data_list:
-            return
+    def store_chart_data_history(self, type_of_chart, period, data_list):
+        """Saves chart data JSON to chart_history table."""
+        if not data_list: return
         try:
-            json_data = json.dumps(chart_data_list)
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO chart_history (type, period, data, timestamp) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                    (type_of_chart, period_identifier, json_data)
-                )
+                cursor.execute("INSERT INTO chart_history (type, period, data, timestamp) VALUES (?, ?, ?, CURRENT_TIMESTAMP)", (type_of_chart, period, json.dumps(data_list)))
                 conn.commit()
         except Exception as e:
-            self.log(f"Error storing chart history for {type_of_chart}/{period_identifier}: {e}", level="WARNING")
+            self.log(f"Error storing chart history for {type_of_chart}/{period}: {e}", level="WARNING")
 
-    def get_previous_chart_data(self, type_of_chart, period_identifier):
-        """
-        Retrieves the most recent chart_history JSON for the given type and period,
-        from the prior comparable time window (e.g., yesterday for daily, etc.).
-        """
-        self.log(f"Getting previous chart data for {type_of_chart}/{period_identifier}", level="DEBUG")
-
-        period_conditions = {
-            "daily":   "date(timestamp) = date('now','-1 day')",
-            "weekly":  "date(timestamp) >= date('now','-14 days') AND date(timestamp) < date('now','-7 days')",
-            "monthly": "date(timestamp) >= date('now','-60 days') AND date(timestamp) < date('now','-30 days')",
-            "yearly":  "date(timestamp) >= date('now','-730 days') AND date(timestamp) < date('now','-365 days')",
+    def get_previous_chart_data(self, type_of_chart, period):
+        """Retrieves the most recent chart_history JSON for comparison."""
+        conditions = {
+            "daily": "date(timestamp) = date('now','-1 day')", "weekly": "date(timestamp) >= date('now','-14 days') AND date(timestamp) < date('now','-7 days')",
+            "monthly": "date(timestamp) >= date('now','-60 days') AND date(timestamp) < date('now','-30 days')", "yearly": "date(timestamp) >= date('now','-730 days') AND date(timestamp) < date('now','-365 days')",
         }
-        condition = period_conditions.get(period_identifier)
-
-        if condition:
-            query = (
-                "SELECT data FROM chart_history "
-                "WHERE type = ? AND period = ? AND " + condition + " "
-                "ORDER BY timestamp DESC LIMIT 1"
-            )
-        else:
-            query = "SELECT data FROM chart_history WHERE type = ? AND period = ? ORDER BY timestamp DESC LIMIT 1"
-
+        condition = conditions.get(period)
+        if not condition: return []
+        query = f"SELECT data FROM chart_history WHERE type = ? AND period = ? AND {condition} ORDER BY timestamp DESC LIMIT 1"
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute(query, (type_of_chart, period_identifier))
+                cursor.execute(query, (type_of_chart, period))
                 res = cursor.fetchone()
-                if res and res[0]:
-                    loaded = json.loads(res[0])
-                    return loaded
+                if res and res[0]: return json.loads(res[0])
         except Exception as e:
-            self.log(f"Error fetching previous chart for {type_of_chart}/{period_identifier}: {e}", level="WARNING")
-
+            self.log(f"Error fetching previous chart for {type_of_chart}/{period}: {e}", level="WARNING")
         return []
 
     def get_overview_stats_for_period(self, days_str):
-        """
-        Computes overview statistics for a given period (days_str).
-        Returns a dict with:
-        - days: number of distinct dates in music_history for that period
-        - unique_songs: count of distinct artist|title pairs in that period
-        - total_plays: total row count in that period
-        - unique_albums: count of distinct artist|album pairs
-        - unique_artists: count of distinct artists
-        """
+        """Computes overview statistics for a given period."""
+        stats = {}
+        queries = {
+            "days": f"SELECT COUNT(DISTINCT date(timestamp)) FROM music_history WHERE timestamp >= datetime('now', '-{days_str}')",
+            "unique_songs": f"SELECT COUNT(DISTINCT artist || '|' || title) FROM music_history WHERE timestamp >= datetime('now', '-{days_str}')",
+            "total_plays": f"SELECT COUNT(*) FROM music_history WHERE timestamp >= datetime('now', '-{days_str}')",
+            "unique_albums": f"SELECT COUNT(DISTINCT artist || '|' || album) FROM music_history WHERE timestamp >= datetime('now', '-{days_str}')",
+            "unique_artists": f"SELECT COUNT(DISTINCT artist) FROM music_history WHERE timestamp >= datetime('now', '-{days_str}')"
+        }
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                # Distinct days
-                cursor.execute(f"""
-                    SELECT COUNT(DISTINCT date(timestamp))
-                    FROM music_history
-                    WHERE timestamp >= datetime('now', '-{days_str}')
-                """)
-                days = cursor.fetchone()[0] or 0
-
-                # Unique songs
-                cursor.execute(f"""
-                    SELECT COUNT(DISTINCT artist || '|' || title)
-                    FROM music_history
-                    WHERE timestamp >= datetime('now', '-{days_str}')
-                """)
-                unique_songs = cursor.fetchone()[0] or 0
-
-                # Total plays
-                cursor.execute(f"""
-                    SELECT COUNT(*)
-                    FROM music_history
-                    WHERE timestamp >= datetime('now', '-{days_str}')
-                """)
-                total_plays = cursor.fetchone()[0] or 0
-
-                # Unique albums
-                cursor.execute(f"""
-                    SELECT COUNT(DISTINCT artist || '|' || album)
-                    FROM music_history
-                    WHERE timestamp >= datetime('now', '-{days_str}')
-                """)
-                unique_albums = cursor.fetchone()[0] or 0
-
-                # Unique artists
-                cursor.execute(f"""
-                    SELECT COUNT(DISTINCT artist)
-                    FROM music_history
-                    WHERE timestamp >= datetime('now', '-{days_str}')
-                """)
-                unique_artists = cursor.fetchone()[0] or 0
-
-            return {
-                "days": days,
-                "unique_songs": unique_songs,
-                "total_plays": total_plays,
-                "unique_albums": unique_albums,
-                "unique_artists": unique_artists
-            }
+                for key, query in queries.items():
+                    cursor.execute(query)
+                    stats[key] = cursor.fetchone()[0] or 0
         except sqlite3.Error as e:
             self.log(f"DB error in get_overview_stats_for_period ({days_str}): {e}", level="ERROR")
-            return {
-                "days": 0,
-                "unique_songs": 0,
-                "total_plays": 0,
-                "unique_albums": 0,
-                "unique_artists": 0
-            }
+            return {key: 0 for key in queries}
+        return stats
 
     def get_last_n_songs_with_timestamps(self, n=100):
-        """
-        Retrieves the last N songs played from the database, along with their timestamps.
-
-        Args:
-            n (int): The number of most recent songs to retrieve. Defaults to 100.
-
-        Returns:
-            list: A list of dictionaries, where each dictionary represents a song
-                and contains 'artist', 'title', and 'timestamp'.
-                Returns an empty list if there's a DB error or no data.
-        """
-        if not self.db_path:
-            self.log("Database path is not configured. Cannot retrieve songs.", level="ERROR")
-            return []
-
+        """Retrieves the last N songs played from the database."""
+        if not self.db_path: return []
         songs_list = []
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                query = f"""
-                    SELECT artist, title, timestamp
-                    FROM music_history
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                """
-                cursor.execute(query, (n,))
-                results = cursor.fetchall()
-
-                for row in results:
-                    songs_list.append({
-                        "artist": row[0],
-                        "title": row[1],
-                        "timestamp": row[2]  # timestamp is already a string in 'YYYY-MM-DD HH:MM:SS' format
-                    })
-            self.log(f"Successfully retrieved {len(songs_list)} last songs from the database.")
-        except sqlite3.Error as e:
-            self.log(f"DB error retrieving last {n} songs: {e}", level="ERROR")
+                cursor.execute("SELECT artist, title, timestamp FROM music_history ORDER BY timestamp DESC LIMIT ?", (n,))
+                for row in cursor.fetchall():
+                    songs_list.append({"artist": row[0], "title": row[1], "timestamp": row[2]})
         except Exception as e:
-            self.log(f"An unexpected error occurred while retrieving last {n} songs: {e}", level="ERROR")
+            self.log(f"Error retrieving last {n} songs: {e}", level="ERROR")
         return songs_list
 
     def get_last_n_unique_songs_with_timestamps(self, n=100):
-        """
-        Retrieves the last N unique songs played from the database, ensuring no
-        duplicate songs are in the list. It returns each unique song with its
-        most recent play timestamp.
-
-        Args:
-            n (int): The number of unique recent songs to retrieve. Defaults to 100.
-
-        Returns:
-            list: A list of dictionaries, where each dictionary represents a unique song
-                and contains 'artist', 'title', and the 'timestamp' of its last play.
-                Returns an empty list if there's a DB error or no data.
-        """
-        if not self.db_path:
-            self.log("Database path is not configured. Cannot retrieve songs.", level="ERROR")
-            return []
-
+        """Retrieves the last N unique songs played from the database."""
+        if not self.db_path: return []
         songs_list = []
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                # This query groups by song (artist and title) and finds the most
-                # recent timestamp for each one. It then orders them by that
-                # recent timestamp to get the last N unique songs played.
-                query = f"""
-                    SELECT
-                        artist,
-                        title,
-                        MAX(timestamp) as last_played_ts
-                    FROM
-                        music_history
-                    GROUP BY
-                        artist, title
-                    ORDER BY
-                        last_played_ts DESC
-                    LIMIT ?
-                """
+                query = f"SELECT artist, title, MAX(timestamp) as last_played_ts FROM music_history GROUP BY artist, title ORDER BY last_played_ts DESC LIMIT ?"
                 cursor.execute(query, (n,))
-                results = cursor.fetchall()
-
-                for row in results:
-                    songs_list.append({
-                        "artist": row[0],
-                        "title": row[1],
-                        "timestamp": row[2] # This is the most recent timestamp for this unique song
-                    })
-            self.log(f"Successfully retrieved {len(songs_list)} last unique songs from the database.")
-        except sqlite3.Error as e:
-            self.log(f"DB error retrieving last {n} unique songs: {e}", level="ERROR")
+                for row in cursor.fetchall():
+                    songs_list.append({"artist": row[0], "title": row[1], "timestamp": row[2]})
         except Exception as e:
-            self.log(f"An unexpected error occurred while retrieving last {n} unique songs: {e}", level="ERROR")
+            self.log(f"DB error retrieving last {n} unique songs: {e}", level="ERROR")
         return songs_list
+
+
+    # --- DATABASE CLEANUP METHODS ---
+    
+    def run_optimization(self, kwargs):
+        """Main function to run all cleanup tasks, triggered by its own schedule."""
+        self.log("Scheduled optimization run has started.")
+        
+        if not os.path.exists(self.db_path):
+            self.log(f"❌ Database file not found at '{self.db_path}'. Aborting optimization run.", level="ERROR")
+            return
+        
+        database_was_modified = False
+            
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                self.log("--- Task 1: Checking for skipped tracks ---")
+                skipped_deleted_count = self._cleanup_skipped_tracks(cursor)
+                if skipped_deleted_count > 0:
+                    database_was_modified = True
+
+                if self.cleanup_prune_enabled:
+                    self.log("--- Task 2: Pruning old chart history ---")
+                    pruned_count = self._prune_chart_history(cursor)
+                    if pruned_count > 0:
+                        database_was_modified = True
+                else:
+                    self.log("--- Task 2: Pruning disabled, skipping. ---")
+
+                if database_was_modified and self.cleanup_execute_mode:
+                    self.log("Committing all changes to the database...")
+                    conn.commit()
+                
+                if database_was_modified and self.cleanup_execute_mode and self.cleanup_vacuum_on_complete:
+                    self.log("--- Task 3: Reclaiming disk space ---")
+                    self.log("🧹 Starting VACUUM. This may take a moment...")
+                    conn.row_factory = None
+                    conn.execute("VACUUM;")
+                    conn.row_factory = sqlite3.Row
+                    self.log("✅ VACUUM complete. Database file has been compacted.")
+                
+                self.log("Optimization run finished.")
+
+        except sqlite3.Error as e:
+            self.log(f"❌ A database error occurred during optimization: {e}", level="ERROR")
+        except Exception as e:
+            self.log(f"❌ An unexpected error occurred during optimization: {e}", level="ERROR")
+
+    def _cleanup_skipped_tracks(self, cursor):
+        """Finds and deletes skipped tracks. Returns number of rows affected."""
+        query = "SELECT id, timestamp, LAG(timestamp, 1) OVER (ORDER BY timestamp) AS prev_timestamp FROM music_history"
+        cursor.execute(query)
+        
+        ids_to_delete = []
+        for track in cursor.fetchall():
+            if track["prev_timestamp"] is None: continue
+            
+            current_ts = datetime.datetime.fromisoformat(track["timestamp"])
+            prev_ts = datetime.datetime.fromisoformat(track["prev_timestamp"])
+            time_diff = (current_ts - prev_ts).total_seconds()
+            
+            if 0 <= time_diff < self.cleanup_threshold_seconds:
+                ids_to_delete.append((track["id"],))
+
+        found_count = len(ids_to_delete)
+        if found_count == 0:
+            self.log("No skipped tracks found.")
+            return 0
+
+        self.log(f"Found {found_count} skipped tracks.")
+        if self.cleanup_execute_mode:
+            cursor.executemany("DELETE FROM music_history WHERE id = ?;", ids_to_delete)
+            self.log(f"EXECUTE: Deleted {cursor.rowcount} skipped tracks.")
+            return cursor.rowcount
+        else:
+            self.log("DRY RUN: Would have deleted these tracks. Enable 'cleanup_execute_on_run' to proceed.")
+            return 0
+
+    def _prune_chart_history(self, cursor):
+        """Deletes records from chart_history older than the configured number of days."""
+        cutoff_date_str = f"datetime('now', '-{self.cleanup_prune_keep_days} days')"
+        
+        query_count = f"SELECT COUNT(*) FROM chart_history WHERE timestamp < {cutoff_date_str};"
+        cursor.execute(query_count)
+        count_to_delete = cursor.fetchone()[0]
+
+        if count_to_delete == 0:
+            self.log("No old chart history records to prune.")
+            return 0
+            
+        self.log(f"Found {count_to_delete} chart history records older than {self.cleanup_prune_keep_days} days.")
+        
+        if self.cleanup_execute_mode:
+            query_delete = f"DELETE FROM chart_history WHERE timestamp < {cutoff_date_str};"
+            cursor.execute(query_delete)
+            self.log(f"EXECUTE: Deleted {cursor.rowcount} old records from chart_history.")
+            return cursor.rowcount
+        else:
+            self.log("DRY RUN: Would have deleted these records. Enable 'cleanup_execute_on_run' to proceed.")
+            return 0
