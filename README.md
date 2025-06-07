@@ -78,6 +78,7 @@ music_tracker:
   
   # --- AI & Chart Generation ---
   # The service call for your Generative AI integration. Set to false to disable.
+  # NEEDS APPDAEMON 4.5+
   ai_service: "google_generative_ai_conversation/generate_content"
   
   # Time of day (24-hour HH:MM:SS format) to automatically update the charts.
