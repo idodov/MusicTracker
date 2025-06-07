@@ -1,5 +1,9 @@
 # 🎵 Music Tracker & AI Insights for Home Assistant
 
+Uncover the story of your musical taste with this powerful AppDaemon script for Home Assistant. Go beyond simple play counts and dive deep into your listening habits with automatically generated, beautiful, and insightful music charts.
+
+This isn't just a tracker; it's your personal music historian, complete with an optional AI musicologist that provides stunning visual and analytical reports on what you've been listening to.
+
 <p align="center">
   <img src="https://github.com/user-attachments/assets/01c96643-0a0e-45dc-a9eb-ddf18b060480" alt="Music Charts Interface" width="800">
 </p>
