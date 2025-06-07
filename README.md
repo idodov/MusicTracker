@@ -180,19 +180,6 @@ Once the script has run and generated the file, you can access your personal mus
 
 ---
 
-## 🔧 Database Maintenance Explained
-
-Over time, your database can grow large. This script solves that problem automatically.
-
--   **Why cleanup is needed:** The `chart_history` table, used to calculate chart position changes (▲/▼), can grow to hundreds of megabytes. Also, quickly skipped songs can clutter your history.
--   **What the script does:**
-    1.  **Deletes Skipped Songs:** Removes any entry that was played for less than the `cleanup_threshold_seconds`.
-    2.  **Prunes Chart History:** Deletes historical chart data older than `cleanup_prune_keep_days`, keeping only what's needed for recent comparisons.
-    3.  **Vacuums the Database:** After cleaning, it runs the `VACUUM` command to physically shrink the database file and reclaim disk space.
--   **Safe by Default:** The `cleanup_execute_on_run: false` setting ensures that your first few runs are a "dry run". Check the AppDaemon logs to see what the script *would have* deleted before you enable it for real.
-
----
-
 ## 🧰 Troubleshooting
 
 -   **I get a 404 Not Found error when trying to view the page:**
