@@ -506,7 +506,7 @@ class MusicTracker(hass.Hass):
         prompt = self.build_prompt_from_chart_data(charts_data_for_ai)
         
         try:
-            self.call_service(f"{domain}/{service}", prompt=prompt, timeout=120, hass_timeout=120, return_response=True, callback=self._ai_response_callback)
+            self.call_service(f"{domain}/{service}", prompt=prompt, timeout=120, hass_timeout=120, callback=self._ai_response_callback)
         except Exception as e:
             self.log(f"Error initiating AI service call: {e}", level="ERROR")
             self.render_and_write_html(self._last_charts_data, f"Error initiating AI analysis: {e}", self._last_overview_stats_per_period)
