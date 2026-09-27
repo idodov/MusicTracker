@@ -23,6 +23,7 @@ music_tracker:
   ai_service: "ai_task.generate_data"
   run_on_startup: True
   webhook: False
+  pollinations_api_key: "YOUR_KEY_HERE" # for AI images
 
   # --- Database Cleanup Options ---
   cleanup_schedule: "03:05:00"
@@ -38,6 +39,16 @@ music_tracker:
   # --- Execution Options ---
   cleanup_execute_on_run: true
   cleanup_vacuum_on_complete: true
+"""
+
+"""
+This script tracks your music listening habits across your media players.
+Builds a database of your listening history.
+Generates daily charts for your top songs, artists, albums, and more.
+Provides insights into your musical tastes.
+Includes a fully integrated, automated database cleanup and optimization
+process to remove skipped tracks and prune old chart history, keeping the
+database lean and efficient.
 """
 
 import appdaemon.plugins.hass.hassapi as hass
@@ -220,30 +231,20 @@ AI_PROMPT_1 = [
     "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game related to music preferences and recommendations (e.g., trivia on artists, lyrics, play counts, chart positions, etc.). The game should use buttons and other clickable elements—no typing required.",
     "4. Dynamic AI Artist Visualization (Mandatory):",
     "   - Image: Generate a single, visually striking image featuring 1-2 of the user's top artists. This is the ONLY image allowed in the HTML output.",
-    "   - Artist for Visualization: The primary artist for visualization is '{identified_artist_name}'. If no specific artist is provided (e.g., if '{identified_artist_name}' is a generic placeholder like 'a musician'), you may select a prominent artist from the provided data or choose a generic popular one if no data is available.",
-    "   - Pollinations.ai Prompt (Crucial Instructions): For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. The prompt MUST explicitly incorporate the actual name of the artist identified above (i.e., '{identified_artist_name}') AND strongly aim to replicate the artist's actual physical likeness and recognizable features as closely as possible. The goal is an image that is as similar as possible to the artist's look. Combine 2-4 diverse elements from your own variations (e.g., style, setting, mood, activity) to create fresh concepts each time. If you choose to create a banner-style image (e.g., a wide aspect ratio like 16:9 or 21:9), you MAY add `&width=[VALUE]&height=[VALUE]` parameters to the URL (e.g., `&width=1200&height=400`). You decide if a banner aspect ratio is most visually appealing for the chosen artist.",
-    "   - Model: Use `model=turbo` or `flux`.",
-    "   - URL: `https://pollinations.ai/p/[URL_ENCODED_PROMPT]?model=[SELECTED_MODEL]`",
-    "   - Embedding: Embed using `<img>` with descriptive `alt` text. Style `<img>` (scoped to `.ai-container`) for responsiveness. Credit Pollinations.ai with a link.",
+    "   - Artist for Visualization: The primary artist for visualization is '{identified_artist_name}'. If no specific artist is provided, choose a prominent artist from the data.",
+    "   - Pollinations.ai Instructions (Crucial): Generate a creative, descriptive URL-encoded prompt featuring '{identified_artist_name}' aiming to replicate their recognizable likeness and style.",
+    "   - Image URL Format: Use the exact URL `https://gen.pollinations.ai/image/[URL_ENCODED_PROMPT]?model=flux&width=800&height=400{auth_param}`",
+    "   - Embedding: Embed using `<img src=\"https://gen.pollinations.ai/image/[URL_ENCODED_PROMPT]?model=flux&width=800&height=400{auth_param}\" alt=\"{identified_artist_name}\" />`. Style `<img>` (scoped to `.ai-container`) for responsiveness. Credit Pollinations.ai with a link.",
     "Design & Technical Requirements:",
     "1. Output Format: Generate ONLY pure HTML code. The entire output MUST be wrapped in a single `<div class=\"ai-container\">` and contain NO `<html>`, `<head>`, `<body>` tags, markdown, or conversational text.",
     "2. CSS Styling:",
-    "   - Embed ALL CSS within `<style>` tags directly inside `ai-container` (e.g., at the beginning).",
-    "   - Scoping: ALL CSS rules MUST be prefixed with `.ai-container` to avoid host page interference. Avoid global selectors (`*`, `body`, `html`) unless scoped.",
-    "   - Visuals: Achieve a modern, clean, polished, and unique aesthetic. Develop a harmonious color palette. Use clear, modern web-safe (or Google) fonts. Use ample whitespace. `ai-container` should be `width: 100%`.",
-    "   - Image Constraint: Beyond the AI artist image, NO other static images/icons (unless icon font) or complex background images are allowed.",
-    "3. Data Visualization:",
-    "   - Use Chart.js (via CDN, embedded JS) to create a seamless and visually appealing set of charts, such as a Pie/Doughnut chart for top genres, a Bar chart for top artists, and a Line chart for daily listening trends, while allowing creative freedom in generating additional graphs beyond these examples.",
-    "   - Avoid generic 'Others' categories; display distinct top entries.",
-    "   - Fallback: Pure CSS charts (scoped) if Chart.js is too complex.",
-    "4. Responsiveness (Mobile & Desktop):",
-    "   - Primary content should largely fit within ~85vh viewport height on load.",
-    "   - Use CSS Flexbox or Grid for layout.",
-    "   - Mobile (<768px): Content blocks (charts, AI image, text, game) MUST stack vertically.",
-    "   - Desktop (>=768px): Arrange related sub-containers side-by-side.",
-    "   - Apply sensible `max-height` to visuals (e.g., AI image ~45vh, charts 300-400px).",
-    "   - NO horizontal scrolling.",
-    "5. Structure: Organize content logically into: 'Musical Analysis' (including AI image), 'Artist & Song Recommendations', and 'Interactive Game'. All JavaScript (Chart.js, game logic) must be embedded and operate within `.ai-container`."
+    "   - Embed ALL CSS within `<style>` tags directly inside `ai-container`.",
+    "   - Scoping: ALL CSS rules MUST be prefixed with `.ai-container` to avoid host page interference.",
+    "   - Visuals: Achieve a modern, clean, polished aesthetic. Use ample whitespace. `ai-container` should be `width: 100%`.",
+    "   - Image Constraint: Beyond the AI artist image, NO other static images or icons are allowed.",
+    "3. Data Visualization: Use Chart.js (via CDN, embedded JS) to create interactive charts.",
+    "4. Responsiveness: Works seamlessly on desktop and mobile viewports.",
+    "5. Structure: Organize content into: 'Musical Analysis' (with AI image), 'Artist & Song Recommendations', and 'Interactive Game'."
 ]
 
 AI_PROMPT_2 = [
@@ -252,47 +253,30 @@ AI_PROMPT_2 = [
     "Begin the HTML output with a prominent main title displaying `Your Musical Insights for [Analyzed Time Period]`, with the period inferred from the provided listening data.",
 
     "Core Content & Analysis:",
-    "1. Musical Preferences Analysis: Deeply analyze provided data to reveal top genres, artists, predominant moods (if inferable), and notable listening patterns/shifts. Frame all insights positively.",
-    "   - Identifying notable listening patterns, such as periods of specific genre focus, discovery phases, consistent repeat listening, or any surprising findings or evolution in taste.",
-    "   - Highlight connections between artists/genres, and provide overarching themes or summaries of my musical journey.",
-    "   - Frame all analysis with positive and encouraging language, celebrating my unique musical journey and preferences.",
-    "   - Temporal Listening Analysis: Based on the timestamps, analyze my listening habits throughout the day. Identify peak listening hours (e.g., mornings, late nights), compare weekday vs. weekend patterns, and try to find connections between the time of day and the type of music I listen to (e.g., 'energetic music in the mornings, calmer tracks at night').",
-    "   - Musical Taste Patterns: Identify periods of specific genre focus, discovery phases, consistent repeat listening, or any surprising findings or evolution in my taste.",
-    "2. Recommendations: Suggest 3-5 new artists/songs based on habits, including fun, engaging trivia for each.",
-    "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game related to music preferences and recommendations (e.g., trivia on artists, lyrics, play counts, chart positions, etc.). The game should use buttons and other clickable elements—no typing required.",
+    "1. Musical Preferences Analysis: Deeply analyze provided data to reveal top genres, artists, predominant moods, and notable listening patterns/shifts. Frame all insights positively.",
+    "   - Temporal Listening Analysis: Based on timestamps, analyze habits throughout the day (peak hours, weekday vs. weekend patterns).",
+    "   - Musical Taste Patterns: Identify periods of genre focus, discovery phases, or repeat listening.",
+    "2. Recommendations: Suggest 3-5 new artists/songs based on habits, including fun trivia for each.",
+    "3. Interactive Game (Highly Desired): Implement a small, fun, self-contained HTML/CSS/JS game related to music preferences (e.g. trivia). Use buttons—no typing required.",
     "4. Dynamic AI Artist Visualization (Mandatory):",
     "   - Image: Generate a single, visually striking image featuring 1-2 of the user's top artists. This is the ONLY image allowed in the HTML output.",
-    "   - Artist for Visualization: The primary artist for visualization is '{identified_artist_name}'. If no specific artist is provided (e.g., if '{identified_artist_name}' is a generic placeholder like 'a musician'), you may select a prominent artist from the provided data or choose a generic popular one if no data is available.",
-    "   - Pollinations.ai Prompt (Crucial Instructions): For EACH request, you MUST generate a NEW, unique, and imaginative prompt string to be used with Pollinations.ai. The prompt MUST explicitly incorporate the actual name of the artist identified above (i.e., '{identified_artist_name}') AND strongly aim to replicate the artist's actual physical likeness and recognizable features as closely as possible. The goal is an image that is as similar as possible to the artist's look. Combine 2-4 diverse elements from your own variations (e.g., style, setting, mood, activity) to create fresh concepts each time. If you choose to create a banner-style image (e.g., a wide aspect ratio like 16:9 or 21:9), you MAY add `&width=[VALUE]&height=[VALUE]` parameters to the URL (e.g., `&width=1200&height=400`). You decide if a banner aspect ratio is most visually appealing for the chosen artist.",
-    "   - Model: Use `model=turbo` or `flux`.",
-    "   - URL: `https://pollinations.ai/p/[URL_ENCODED_PROMPT]?model=[SELECTED_MODEL]`",
-    "   - Embedding: Embed using `<img>` with descriptive `alt` text. Style `<img>` (scoped to `.ai-container`) for responsiveness. Credit Pollinations.ai with a link.",
+    "   - Artist for Visualization: The primary artist for visualization is '{identified_artist_name}'.",
+    "   - Pollinations.ai Instructions (Crucial): Generate a creative, descriptive URL-encoded prompt featuring '{identified_artist_name}' aiming to replicate their recognizable likeness and style.",
+    "   - Image URL Format: Use the exact URL `https://gen.pollinations.ai/image/[URL_ENCODED_PROMPT]?model=flux&width=800&height=400{auth_param}`",
+    "   - Embedding: Embed using `<img src=\"https://gen.pollinations.ai/image/[URL_ENCODED_PROMPT]?model=flux&width=800&height=400{auth_param}\" alt=\"{identified_artist_name}\" />`. Style `<img>` for responsiveness. Credit Pollinations.ai with a link.",
     "Design & Technical Requirements:",
     "1. Output Format: Generate ONLY pure HTML code. The entire output MUST be wrapped in a single `<div class=\"ai-container\">` and contain NO `<html>`, `<head>`, `<body>` tags, markdown, or conversational text.",
     "2. CSS Styling:",
-    "   - Embed ALL CSS within `<style>` tags directly inside `ai-container` (e.g., at the beginning).",
-    "   - Scoping: ALL CSS rules MUST be prefixed with `.ai-container` to avoid host page interference. Avoid global selectors (`*`, `body`, `html`) unless scoped.",
-    "   - Visuals: Achieve a modern, clean, polished, and unique aesthetic. Develop a harmonious color palette. Use clear, modern web-safe (or Google) fonts. Use ample whitespace. `ai-container` should be `width: 100%`.",
-    "   - Image Constraint: Beyond the AI artist image, NO other static images/icons (unless icon font) or complex background images are allowed.",
-    "3. Data Visualization:",
-    "   - Use Chart.js (via CDN, embedded JS) to create a seamless and visually appealing set of charts, such as a Pie/Doughnut chart for top genres, a Bar chart for top artists, and a Line chart for daily listening trends, while allowing creative freedom in generating additional graphs beyond these examples.",
-    "   - Avoid generic 'Others' categories; display distinct top entries.",
-    "   - Fallback: Pure CSS charts (scoped) if Chart.js is too complex.",
-    "4. Responsiveness (Mobile & Desktop):",
-    "   - Primary content should largely fit within ~85vh viewport height on load.",
-    "   - Use CSS Flexbox or Grid for layout.",
-    "   - Mobile (<768px): Content blocks (charts, AI image, text, game) MUST stack vertically.",
-    "   - Desktop (>=768px): Arrange related sub-containers side-by-side.",
-    "   - Apply sensible `max-height` to visuals (e.g., AI image ~45vh, charts 300-400px).",
-    "   - NO horizontal scrolling.",
-    "5. Structure: Organize content logically into: 'Musical Analysis' (including AI image), 'Artist & Song Recommendations', and 'Interactive Game'. All JavaScript (Chart.js, game logic) must be embedded and operate within `.ai-container`."
+    "   - Embed ALL CSS within `<style>` tags directly inside `ai-container`.",
+    "   - Scoping: ALL CSS rules MUST be prefixed with `.ai-container`.",
+    "3. Data Visualization: Use Chart.js (via CDN, embedded JS).",
+    "4. Responsiveness: Clean layout on mobile and desktop without horizontal scroll.",
+    "5. Structure: Organize content into: 'Musical Analysis' (with AI image), 'Artist & Song Recommendations', and 'Interactive Game'."
 ]
 
 
 class TrackManager:
-    """
-    Manages recently played tracks to prevent duplicates within a short timeframe.
-    """
+    """Manages recently played tracks to prevent duplicates within a short timeframe."""
     def __init__(self):
         self.played_tracks = {}
         self.lock = threading.Lock()
@@ -327,9 +311,7 @@ class TrackManager:
 
 
 class MusicTracker(hass.Hass):
-    """
-    AppDaemon app to track music history, generate charts, and self-optimize its database.
-    """
+    """AppDaemon app to track music history, generate charts, and self-optimize its database."""
 
     def initialize(self):
         self.log("MusicTracker Initializing...")
@@ -344,6 +326,7 @@ class MusicTracker(hass.Hass):
         self.db_path = self.args.get("db_path", "/config/music_data_history.db")
         self.html_output_path = self.args.get("html_output_path", "/homeassistant/www/music_charts.html")
         self.ai_service = self.args.get("ai_service", False)
+        self.pollinations_api_key = self.args.get("pollinations_api_key", "")
         self.webhook = self.args.get("webhook", False)
 
         # Database Cleanup Options
@@ -363,7 +346,7 @@ class MusicTracker(hass.Hass):
         self.create_db_tables()
         self.cleanup_old_db_tracks()
 
-        # Setup Chart Generation Schedule
+        # Schedule Chart Generation
         try:
             time_obj = datetime.time.fromisoformat(self.chart_update_time)
             self.run_daily(self.scheduled_update_html_callback, time_obj)
@@ -371,7 +354,7 @@ class MusicTracker(hass.Hass):
         except (ValueError, TypeError):
             self.log(f"Invalid chart_update_time: '{self.chart_update_time}'. Scheduling disabled.", level="ERROR")
 
-        # Setup Database Cleanup Schedule
+        # Schedule Database Cleanup
         if self.cleanup_schedule:
             try:
                 cleanup_time_obj = datetime.time.fromisoformat(self.cleanup_schedule)
@@ -479,18 +462,16 @@ class MusicTracker(hass.Hass):
         self.log("HTML update process finished.")
 
     def _resolve_ai_service(self):
-        """
-        Ensures a valid Home Assistant service is targeted.
-        Default to 'ai_task/generate_data'.
-        """
         raw_service = self.ai_service if isinstance(self.ai_service, str) else "ai_task/generate_data"
         raw_service = raw_service.strip().replace(".", "/")
-        
-        # If user inadvertently configured task name as the service
         if raw_service in ["ai_task/google_ai_task", "ai_task/ai_task", "ai_task"]:
             return "ai_task/generate_data"
-            
         return raw_service
+
+    def _get_auth_param(self):
+        if self.pollinations_api_key and isinstance(self.pollinations_api_key, str) and self.pollinations_api_key.strip():
+            return f"&key={self.pollinations_api_key.strip()}"
+        return ""
 
     def _call_ai_analysis(self, charts_data_for_ai):
         if not self.ai_service:
@@ -538,17 +519,13 @@ class MusicTracker(hass.Hass):
             self.render_and_write_html(self._last_charts_data, f"Error initiating AI analysis: {e}", self._last_overview_stats_per_period)
 
     def _ai_response_callback(self, resp):
-        """
-        Callback after AI service returns. Safely extracts generated HTML text.
-        """
-        # self.log(f"Raw AI response received: {json.dumps(resp, ensure_ascii=False) if isinstance(resp, (dict, list)) else resp}")
+        self.log(f"Raw AI response received: {json.dumps(resp, ensure_ascii=False) if isinstance(resp, (dict, list)) else resp}")
         ai_text = None
 
         def extract_text(data):
             if isinstance(data, str) and len(data.strip()) > 0:
                 return data
             if isinstance(data, dict):
-                # בדיקת מפתחות נפוצים ביותר של LLM / Conversation / ai_task
                 for key in ["text", "data", "response", "content", "speech", "message", "result"]:
                     val = data.get(key)
                     if isinstance(val, str) and len(val.strip()) > 0:
@@ -557,7 +534,6 @@ class MusicTracker(hass.Hass):
                         found = extract_text(val)
                         if found:
                             return found
-                # חיפוש בשאר המפתחות אם המפתחות הנפוצים לא התאימו
                 for v in data.values():
                     if isinstance(v, (dict, list, str)):
                         found = extract_text(v)
@@ -572,13 +548,11 @@ class MusicTracker(hass.Hass):
 
         try:
             if isinstance(resp, dict):
-                # אם יש שגיאה מפורשת
                 if resp.get("success") is False:
                     err = resp.get("error", {})
                     err_msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
                     ai_text = f"AI analysis failed: {err_msg}"
                 else:
-                    # חילוץ חכם של הטקסט מהתשובה
                     ai_text = extract_text(resp)
             elif isinstance(resp, str):
                 ai_text = resp
@@ -634,7 +608,8 @@ class MusicTracker(hass.Hass):
         display_name_for_rate = selected_rate_key.capitalize() if selected_rate_key else "Overall"
         dates_str_for_selected_rate = data_for_selected_rate.get("dates", "N/A")
 
-        prompt_lines = [line.format(identified_artist_name=top_artist_name) for line in AI_PROMPT_1]
+        auth_param = self._get_auth_param()
+        prompt_lines = [line.format(identified_artist_name=top_artist_name, auth_param=auth_param) for line in AI_PROMPT_1]
         prompt_lines.extend([
             f"My listening data for the {display_name_for_rate} period covers: {dates_str_for_selected_rate}.",
             f"\nTop {display_name_for_rate} Songs Data (up to 100):",
@@ -659,7 +634,8 @@ class MusicTracker(hass.Hass):
             if artist_counts:
                 top_artist_name = max(artist_counts, key=artist_counts.get)
 
-        prompt_lines = [line.format(identified_artist_name=top_artist_name) for line in AI_PROMPT_2]
+        auth_param = self._get_auth_param()
+        prompt_lines = [line.format(identified_artist_name=top_artist_name, auth_param=auth_param) for line in AI_PROMPT_2]
         if not recent_songs_data:
             prompt_lines.append("\nMy listening data is not available at this moment.")
             return "\n".join(prompt_lines)
@@ -1065,4 +1041,3 @@ class MusicTracker(hass.Hass):
         else:
             self.log("DRY RUN: Would have deleted these records. Enable 'cleanup_execute_on_run' to proceed.")
             return 0
-          
